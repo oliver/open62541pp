@@ -4,16 +4,3 @@ sources:
     url:
     - "https://github.com/open62541pp/open62541pp/archive/refs/tags/v0.3.0.tar.gz"
     sha256: "4a1f03f0c61f5f49d3cd83269dd809c955fa7047d5f1a3e607052e15e3503254"
-  "0.2.0":
-    url:
-    - "https://github.com/open62541pp/open62541pp/archive/refs/tags/v0.2.0.tar.gz"
-    sha256: "49523ccac54ed1fd4d1496cd3144c48f3ac0610d706b01747f442877133f1723"
-  "0.1.0":
-    url:
-    - "https://github.com/open62541pp/open62541pp/archive/refs/tags/v0.1.0.tar.gz"
-    sha256: "786bbac48d40401b36d93996556027cb9af68ce2d6074b3b47e4b2ea54ad730e"
-patches:
-  "0.1.0":
-    - patch_file: "patches/0001-fix-cmake-find-deps-0.1.0.patch"
-      patch_description: "Use Cmake find_package(*) to resolve external dependencies"
-      patch_type: "portability"
