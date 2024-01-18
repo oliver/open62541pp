@@ -64,7 +64,7 @@ class open62541pp(ConanFile):
         open62541_version = "1.2.6"
 
         if self_version >= "0.2.0":
-            open62541_version = "1.3.4"
+            open62541_version = "1.3.9"
 
         self.requires(f"open62541/{open62541_version}")
 
