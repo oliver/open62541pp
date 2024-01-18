@@ -1,15 +1,16 @@
 #pragma once
 
-#include <iterator>
+#include <cstdint>
 #include <vector>
 
-#include "open62541pp/Common.h"
-#include "open62541pp/types/Builtin.h"
+#include "open62541pp/Span.h"
 #include "open62541pp/types/Composed.h"
 #include "open62541pp/types/NodeId.h"
 
 // forward declarations
 namespace opcua {
+class ByteString;
+class QualifiedName;
 class Server;
 }  // namespace opcua
 
@@ -57,6 +58,24 @@ std::vector<ReferenceDescription> browseAll(
 );
 
 /**
+ * Discover child nodes recursively (non-standard).
+ *
+ * Possible loops (that can occur for non-hierarchical references) are handled internally. Every
+ * node is added at most once to the results array. Nodes are only added if they match the
+ * `nodeClassMask` in the BrowseDescription. However, child nodes are still recursed into if the
+ * NodeClass does not match. So it is possible, for example, to get all VariableNodes below a
+ * certain ObjectNode, with additional objects in the hierarchy below.
+ *
+ * @note No implementation for `Client`.
+ *
+ * @param server Instance of type Server
+ * @param bd Browse description
+ * @see UA_Server_browseRecursive
+ * @ingroup View
+ */
+std::vector<ExpandedNodeId> browseRecursive(Server& server, const BrowseDescription& bd);
+
+/**
  * Translate a browse path to NodeIds.
  * @param serverOrClient Instance of type Server or Client
  * @param browsePath Browse path (starting node & relative path)
@@ -80,7 +99,7 @@ BrowsePathResult translateBrowsePathToNodeIds(T& serverOrClient, const BrowsePat
  */
 template <typename T>
 BrowsePathResult browseSimplifiedBrowsePath(
-    T& serverOrClient, const NodeId& origin, const std::vector<QualifiedName>& browsePath
+    T& serverOrClient, const NodeId& origin, Span<const QualifiedName> browsePath
 );
 
 }  // namespace opcua::services

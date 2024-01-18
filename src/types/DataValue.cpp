@@ -9,7 +9,7 @@ static UA_DataValue fromOptionals(
     const std::optional<DateTime>& serverTimestamp,
     const std::optional<uint16_t>& sourcePicoseconds,
     const std::optional<uint16_t>& serverPicoseconds,
-    const std::optional<UA_StatusCode>& statusCode
+    const std::optional<StatusCode>& statusCode
 ) {
     return {
         {},
@@ -17,7 +17,7 @@ static UA_DataValue fromOptionals(
         serverTimestamp.value_or(DateTime{}),
         sourcePicoseconds.value_or(uint16_t{}),
         serverPicoseconds.value_or(uint16_t{}),
-        statusCode.value_or(UA_StatusCode{}),
+        statusCode.value_or(StatusCode{}),
         false,
         sourceTimestamp.has_value(),
         serverTimestamp.has_value(),
@@ -28,67 +28,69 @@ static UA_DataValue fromOptionals(
 }
 
 DataValue::DataValue(
-    const Variant& value,
+    Variant value,
     std::optional<DateTime> sourceTimestamp,  // NOLINT
     std::optional<DateTime> serverTimestamp,  // NOLINT
     std::optional<uint16_t> sourcePicoseconds,
     std::optional<uint16_t> serverPicoseconds,
-    std::optional<UA_StatusCode> statusCode
+    std::optional<StatusCode> statusCode
 )
     : DataValue(fromOptionals(
           sourceTimestamp, serverTimestamp, sourcePicoseconds, serverPicoseconds, statusCode
       )) {
-    setValue(value);
+    setValue(std::move(value));
 }
 
-Variant* DataValue::getValuePtr() noexcept {
-    return handle()->hasValue ? &asWrapper<Variant>(handle()->value) : nullptr;
+bool DataValue::hasValue() const noexcept {
+    return handle()->hasValue;
 }
 
-const Variant* DataValue::getValuePtr() const noexcept {
-    return handle()->hasValue ? &asWrapper<Variant>(handle()->value) : nullptr;
+bool DataValue::hasSourceTimestamp() const noexcept {
+    return handle()->hasSourceTimestamp;
 }
 
-std::optional<Variant> DataValue::getValue() const {
-    if (handle()->hasValue) {
-        return Variant(handle()->value);
-    }
-    return {};
+bool DataValue::hasServerTimestamp() const noexcept {
+    return handle()->hasServerTimestamp;
 }
 
-std::optional<DateTime> DataValue::getSourceTimestamp() const {
-    if (handle()->hasSourceTimestamp) {
-        return DateTime(handle()->sourceTimestamp);
-    }
-    return {};
+bool DataValue::hasSourcePicoseconds() const noexcept {
+    return handle()->hasSourcePicoseconds;
 }
 
-std::optional<DateTime> DataValue::getServerTimestamp() const {
-    if (handle()->hasServerTimestamp) {
-        return DateTime(handle()->serverTimestamp);
-    }
-    return {};
+bool DataValue::hasServerPicoseconds() const noexcept {
+    return handle()->hasServerPicoseconds;
 }
 
-std::optional<uint16_t> DataValue::getSourcePicoseconds() const {
-    if (handle()->hasSourcePicoseconds) {
-        return handle()->sourcePicoseconds;
-    }
-    return {};
+bool DataValue::hasStatusCode() const noexcept {
+    return handle()->hasStatus;
 }
 
-std::optional<uint16_t> DataValue::getServerPicoseconds() const {
-    if (handle()->hasServerPicoseconds) {
-        return handle()->serverPicoseconds;
-    }
-    return {};
+Variant& DataValue::getValue() noexcept {
+    return asWrapper<Variant>(handle()->value);
 }
 
-std::optional<uint32_t> DataValue::getStatusCode() const {
-    if (handle()->hasStatus) {
-        return handle()->status;
-    }
-    return {};
+const Variant& DataValue::getValue() const noexcept {
+    return asWrapper<Variant>(handle()->value);
+}
+
+DateTime DataValue::getSourceTimestamp() const noexcept {
+    return DateTime(handle()->sourceTimestamp);  // NOLINT
+}
+
+DateTime DataValue::getServerTimestamp() const noexcept {
+    return DateTime(handle()->serverTimestamp);  // NOLINT
+}
+
+uint16_t DataValue::getSourcePicoseconds() const noexcept {
+    return handle()->sourcePicoseconds;
+}
+
+uint16_t DataValue::getServerPicoseconds() const noexcept {
+    return handle()->serverPicoseconds;
+}
+
+StatusCode DataValue::getStatusCode() const noexcept {
+    return handle()->status;
 }
 
 void DataValue::setValue(const Variant& value) {
@@ -121,7 +123,7 @@ void DataValue::setServerPicoseconds(uint16_t serverPicoseconds) {
     handle()->hasServerPicoseconds = true;
 }
 
-void DataValue::setStatusCode(UA_StatusCode statusCode) {
+void DataValue::setStatusCode(StatusCode statusCode) {
     handle()->status = statusCode;
     handle()->hasStatus = true;
 }

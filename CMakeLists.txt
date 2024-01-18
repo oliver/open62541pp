@@ -2,8 +2,8 @@ cmake_minimum_required(VERSION 3.12)
 
 project(
     open62541++
-    VERSION 0.3.0
-    DESCRIPTION "C++ wrapper for open62541"
+    VERSION 0.11.0
+    DESCRIPTION "C++ wrapper of open62541"
     HOMEPAGE_URL "https://github.com/open62541pp/open62541pp"
     LANGUAGES CXX
 )
@@ -13,8 +13,8 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# generate compile_commands.json
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
 
 # compiled binaries folders (same as open62541)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
@@ -23,9 +23,17 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake)  # for find_package
 
+if(${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.16.0")
+    option(UAPP_ENABLE_PCH "Use precompiled headers to speed up compilation" OFF)
+endif()
+option(UAPP_ENABLE_COVERAGE "Enable coverage reporting for gcc/clang" OFF)
+
 # interface "library" to set the c++ standard / compile-time options requested
 add_library(open62541pp_project_options INTERFACE)
 target_compile_features(open62541pp_project_options INTERFACE cxx_std_17)
+
+include(cmake/Sanitizers.cmake)
+include(cmake/StaticAnalyzers.cmake)
 
 if(MSVC)
     target_compile_options(
@@ -34,27 +42,11 @@ if(MSVC)
             /permissive-
             /W4
             /w14640
+            /wd4127  # conditional expression is constant
+            /wd4661  # explicit template instantiations in cpp files
+            /wd4996  # deprecation gmtime, localtime
     )
 else()
-    option(UAPP_ENABLE_COVERAGE "Enable coverage reporting for gcc/clang" OFF)
-    if(UAPP_ENABLE_COVERAGE)
-        message(STATUS "Coverage enabled")
-        target_compile_options(open62541pp_project_options INTERFACE --coverage -O0 -g)
-        target_link_libraries(open62541pp_project_options INTERFACE --coverage)
-    endif()
-
-    option(UAPP_ENABLE_CLANG_TIDY "Enable testing with clang-tidy" OFF)
-    if(UAPP_ENABLE_CLANG_TIDY)
-        message(STATUS "Static code analysis with clang-tidy enabled")
-        find_program(CLANG_TIDY_EXE NAMES clang-tidy)
-        if(CLANG_TIDY_EXE)
-            message(STATUS "Found clang-tidy: ${CLANG_TIDY_EXE}")
-            set(CMAKE_CXX_CLANG_TIDY "${CLANG_TIDY_EXE}")
-        else()
-            message(SEND_ERROR "clang-tidy requested but executable not found")
-        endif()
-    endif()
-
     target_compile_options(
         open62541pp_project_options
         INTERFACE
@@ -64,9 +56,12 @@ else()
             -Wnon-virtual-dtor
             -Wpedantic
     )
-endif()
 
-include(cmake/Sanitizers.cmake)
+    if(UAPP_ENABLE_COVERAGE)
+        target_compile_options(open62541pp_project_options INTERFACE --coverage -O0 -g)
+        target_link_libraries(open62541pp_project_options INTERFACE --coverage)
+    endif()
+endif()
 
 # threads
 find_package(Threads REQUIRED)
@@ -74,6 +69,12 @@ find_package(Threads REQUIRED)
 # open62541
 option(UAPP_INTERNAL_OPEN62541 "Use internal open62541 library" ON)
 if(UAPP_INTERNAL_OPEN62541)
+    # disable IPO if not defined, otherwise open62541 will enable it
+    # IPO increases link times, especially with sanitizers enabled
+    if(NOT DEFINED CMAKE_INTERPROCEDURAL_OPTIMIZATION)
+        set(CMAKE_INTERPROCEDURAL_OPTIMIZATION OFF)
+    endif()
+
     # overwrite default open62541 options
     # disable sanitizers in debug build (> v1.3)
     if (NOT UA_ENABLE_DEBUG_SANITIZER)
@@ -87,7 +88,12 @@ if(UAPP_INTERNAL_OPEN62541)
         mark_as_advanced(UA_ENABLE_UNIT_TESTS_MEMCHECK)
     endif()
 
-    set(OPEN62541_VERSION v1.3.5)  # set manually for CI
+    # disable warnings as errors for open62541
+    if(NOT UA_FORCE_WERROR)
+        set(UA_FORCE_WERROR OFF OFF CACHE BOOL "")
+    endif()
+
+    set(OPEN62541_VERSION v1.3.8)  # set manually for CI
     add_subdirectory(3rdparty/open62541)  # target open62541::open62541
 else()
     set(CMAKE_FIND_PACKAGE_PREFER_CONFIG ON)  # prefer open62541's own config file
@@ -107,19 +113,32 @@ endif()
 include(GNUInstallDirs)
 add_library(
     open62541pp
+    src/AccessControl.cpp
     src/Client.cpp
+    src/Crypto.cpp
+    src/CustomAccessControl.cpp
+    src/CustomDataTypes.cpp
     src/CustomLogger.cpp
+    src/DataType.cpp
+    src/Event.cpp
+    src/Logger.cpp
+    src/MonitoredItem.cpp
     src/Node.cpp
     src/Server.cpp
+    src/Session.cpp
+    src/Subscription.cpp
     src/detail/helper.cpp
-    src/overloads/ostream.cpp
     src/services/Attribute.cpp
+    src/services/Method.cpp
+    src/services/MonitoredItem.cpp
     src/services/NodeManagement.cpp
+    src/services/Subscription.cpp
     src/services/View.cpp
     src/types/Builtin.cpp
     src/types/Composed.cpp
     src/types/DataValue.cpp
     src/types/DateTime.cpp
+    src/types/ExtensionObject.cpp
     src/types/NodeId.cpp
     src/types/Variant.cpp
 )
@@ -139,8 +158,27 @@ target_link_libraries(
         $<BUILD_INTERFACE:open62541pp_project_options>
 )
 
+if(UAPP_ENABLE_PCH)
+    message(STATUS "PCH enabled")
+    target_precompile_headers(
+        open62541pp
+        PUBLIC
+            <chrono>
+            <functional>
+            <iterator>
+            <memory>
+            <string>
+            <string_view>
+            <vector>
+            ${PROJECT_SOURCE_DIR}/include/open62541pp/open62541.h
+        PRIVATE
+            ${PROJECT_SOURCE_DIR}/src/open62541_impl.h
+    )
+endif()
+
 # tests
 option(UAPP_BUILD_TESTS "Build unit tests" OFF)
+option(UAPP_BUILD_TESTS_AUTORUN "Run unit tests after build" OFF)
 if(UAPP_BUILD_TESTS)
     message(STATUS "Unit tests enabled")
     enable_testing()
@@ -165,7 +203,7 @@ if(UAPP_BUILD_TESTS AND UAPP_ENABLE_COVERAGE)
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
         )
         set(coverage_html_output_dir "${CMAKE_BINARY_DIR}/coverage_html")
-        make_directory(${coverage_html_output_dir})
+        file(MAKE_DIRECTORY ${coverage_html_output_dir})
         add_custom_target(
             open62541pp_coverage_report_html
             COMMAND ${GCOVR_EXE} ${gcovr_args} "--html-details" "${coverage_html_output_dir}/index.html"

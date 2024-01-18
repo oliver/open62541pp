@@ -3,14 +3,13 @@
 int main() {
     opcua::Server server;
 
-    // add variable node
-    auto parentNode = server.getObjectsNode();
-    auto myIntegerNode = parentNode.addVariable({1, "the.answer"}, "the answer");
-    // set node attributes
-    myIntegerNode.writeDataType(opcua::Type::Int32);
-    myIntegerNode.writeDisplayName({"en-US", "the answer"});
-    myIntegerNode.writeDescription({"en-US", "the answer"});
-    myIntegerNode.writeScalar(42);
+    // Add a variable node to the Objects node
+    opcua::Node parentNode = server.getObjectsNode();
+    opcua::Node myIntegerNode = parentNode.addVariable({1, 1000}, "TheAnswer");
+    // Write some node attributes
+    myIntegerNode.writeDisplayName({"en-US", "The Answer"})
+        .writeDataType(opcua::DataTypeId::Int32)
+        .writeValueScalar(42);
 
     server.run();
 }

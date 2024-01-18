@@ -7,6 +7,272 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0] - 2023-11-01
+
+### Changed
+
+- Return output `NodeId` from node creation functions (#118):
+  - `services::addObject`
+  - `services::addFolder`
+  - `services::addVariable`
+  - `services::addProperty`
+  - `services::addMethod`
+  - `services::addObjectType`
+  - `services::addVariableType`
+  - `services::addReferenceType`
+  - `services::addDataType`
+  - `services::addView`
+
+### Fixed
+
+- Return *true* output `NodeId` from `Node::add*` methods to allow random node ids with e.g. `NodeId(1, 0)` (#118)
+
+## [0.10.0] - 2023-10-28
+
+### Added
+
+- Event filter (#101)
+  - Add filter wrapper types: `ContentFilterElement`, `ContentFilter`, `DataChangeFilter`, `EventFilter`, `AggregateFilter`
+  - Example how to filter events client-side: `client_eventfilter`
+- Bundle multiple read/write requests (#103)
+  - Add `DiagnosticInfo `wrapper
+  - Add missing request/response wrapper
+  - Add `services::read` function overload for bundled read requests
+  - Add `services::write` function overload for bundled write requests
+- Non-const getter for composed types (#106)
+- GCC 7 support (#110)
+- Update open62541 to v1.3.8 (#115)
+
+## [0.9.0] - 2023-08-29
+
+### Added
+
+- `Span` class to pass and return open62541 arrays without copy and use them with the standard library algorithms (#86)
+  - `Span` objects just hold two members: the pointer to `T` and the size, so they are lightweight and trivially copyable
+  - Spans are views of contiguous sequences of objects, similar to [`std::span`](https://en.cppreference.com/w/cpp/container/span) in C++20. Differences to `std::span`:
+    - Constructor with `std::initializer_list<T>`
+    - Explicit conversion to `std::vector<T>`
+- `Node::exists` method with most efficient implementation to check node existence (#92)
+- Conversions from `string_view`, `const char*`, `char[N]` to `UA_String` (#98)
+- `Event` class to create and trigger events (#99)
+- `Server::createEvent` method (#99)
+- Equality operator overloads for `Session`
+- Add examples:
+  - `events/server_events` (#99)
+
+### Changed
+
+- Use `Span` to represent open62541 arrays (#86)
+  - `EventNotificationCallback` signature:
+    - `eventFields`: `Span<const Variant>` instead of `const std::vector<Variant>&`
+  - `MethodCallback` signature:
+    - `input`: `Span<const Variant>` instead of `const std::vector<Variant>&`
+    - `output`: `Span<Variant>` instead of `std::vector<Variant>&`
+  - Return (no-copy) array as `Span<T>` from `Variant` methods:
+    - `Span<const uint32_t> getArrayDimensions() const`
+    - `Span<T> getArray()`
+    - `Span<const T> getArray() const`
+  - Composed wrapper return `Span<T>` instead of `std::vector<T>` for array attributes:
+    - `ApplicationDescription::getDiscoveryUrls()`
+    - `EndpointDescription::getUserIdentityTokens()`
+    - `BrowseResult::getReferences()`
+    - `RelativePath::getElements()`
+    - `Argument::getArrayDimensions()`
+  - Remove getters for array size, e.g.:
+    - `DataType::getMembersSize()`, use `DataType::getMembers().size()` instead
+- Deprecate type-erased versions of `Variant::getScalar()` and `Variant::getArray()`, use `Variant::data()` instead (#86)
+- Remove existence check from `Node` constructor (#92)
+
+## [0.8.0] - 2023-08-21
+
+### Added
+
+- `services::browseRecursive` as a wrapper for `UA_Server_browseRecursive` (#91)
+- Implicit conversion from `String` / `XmlElement` to `std::string_view` (#93)
+- Convenience functions to read/write object properties (#96):
+  - `Node::readObjectProperty`
+  - `Node::writeObjectProperty`
+- Delete reference (#97):
+  - `services::deleteReference`
+  - `Node::deleteReference`
+
+### Changed
+
+- Return `Variant`/`DataValue` by value from read functions (no performance penalty), deprecate old functions (#94):
+  - `void services::readDataValue(T&, const NodeId&, DataValue&)` -> `DataValue services::readDataValue(T&, const NodeId&)`
+  - `void services::readValue(T&, const NodeId&, Variant&)` -> `Variant services::readValue(T&, const NodeId&)`
+  - `void Node::readDataValue(DataValue&)` -> `DataValue Node::readDataValue()`
+  - `void Node::readValue(Variant&)` -> `Variant Node::readValue()`
+
+- Specific naming of methods to read/write scalar/array values, deprecate old methods (#95):
+  - `Node::readScalar` -> `Node::readValueScalar`
+  - `Node::readArray` -> `Node::readValueArray`
+  - `Node::writeScalar` -> `Node::writeValueScalar`
+  - `Node::writeArray` -> `Node::writeValueArray`
+
+## [0.7.0] - 2023-08-15
+
+### Added
+
+- Set variable node value data source with `Server::setVariableNodeValueBackend` (#65)
+- Missing node management functions (#77):
+  - `Node::addReferenceType` / `services::addReferenceType`
+  - `Node::addDataType` / `services::addDataType`
+  - `Node::addView` / `services::addView`
+- `Variant` methods for custom types (#78):
+  - `Variant::getDataType`
+  - `Variant::getScalar` without template type (returns `void*`)
+  - `Variant::getArray` without template type (returns `void*`)
+  - `Variant::setScalar` overload with custom `UA_DataType`
+  - `Variant::setScalarCopy` overload with custom `UA_DataType`
+  - `Variant::setArray` overload with custom `UA_DataType`
+  - `Variant::setArrayCopy` overload with custom `UA_DataType`
+- `Variant::fromScalar` / `Variant::fromArray` overloads with custom data type (#78)
+- `StatusCode` class (#79)
+- Integration of custom data types (#76):
+  - `DataType` wrapper class
+  - `DataTypeBuilder` to generate `UA_DataType` definition for custom types
+  - `Variant::isType(const UA_DataType&)` overload
+  - `Server::setCustomDataTypes` / `Client::setCustomDataTypes`
+  - `Variant::set*` and `Variant::from*` methods with custom data type parameter
+- `NodeId::isNull` method
+- `ExpandedNodeId::hash` method
+- Custom access control (#74):
+  - `Session` class
+  - `AccessControlBase` base class and `AccessControlDefault` implementation
+  - `Server` methods:
+    - `Server::setAccessControl`
+    - `Server::getSessions`
+- Deduce data type from template type (#84).
+  Provide overloads to deduce the data type id of Variable or VariableType nodes from the template type `T`:
+  - `Node::writeDataType<T>()`
+  - `VariableAttributes::setDataType<T>()`
+  - `VariableTypeAttributes::setDataType<T>()`
+- `std::hash` specialization for `NodeId` and `ExpandedNodeId` (#90)
+- Add examples:
+  - `typeconversion`
+  - `custom_datatypes/*` (#76)
+  - `server_accesscontrol` (#74)
+
+### Changed
+
+- Remove `type`/`typeIndex` template parameters (#83).
+  Infer data type in function body. Ambiguous types have to be specified in overloaded methods with `UA_DataType` parameter
+- Remove `Server::setLogin` method (#74).
+  Use `Server::setAccessControl` instead with `AccessControlDefault(bool allowAnonymous = true, std::vector<Login> logins = {})` instead.
+
+### Fixed
+
+- Catch exceptions in callbacks
+- Add include guard to `Crypto.h` (#80)
+- Clang-tidy fixes (#82)
+- MSVC warnings
+
+## [0.6.0] - 2023-07-29
+
+### Added
+
+- Variable node value callbacks with `Server::setVariableNodeValueCallback` (#63)
+- Encryption (#64)
+  - `Client` constructor with `certificate`, `privateKey`, `trustList` and `revocationList`
+  - `Server` constructor with `certificate`, `privateKey`, `trustList`, `issuerList` and `revocationList`
+  - `crypto::createCertificate` function to create private keys and certificates
+  - `ByteString::fromFile` / `ByteString::toFile` to load and save certificates or private keys
+- `NumericRange` type (#73)
+- Equality overloads for `String`/`ByteString` and `std::string_view`
+- Fluent `Node` interface (#75)
+- Examples
+  - `server_valuecallback` (#63)
+
+### Changed
+
+- Hide `TypeWrapper::getDataType` method
+- Initial node attributes as first default parameter (usually after `browseName`) (#61):
+  - `Node::addFolder` / `services::addFolder`
+  - `Node::addObject` / `services::addObject`
+  - `Node::addVariable` / `services::addVariable`
+  - `Node::addObjectType` / `services::addObjectType`
+  - `Node::addVariableType` / `services::addVariableType`
+  - `Node::addMethod` / `services::addMethod`
+  - `Node::addFolder` / `services::addFolder`
+  - `Node::addFolder` / `services::addFolder`
+- `std::string` only convertible to/from `opcua::String`
+
+### Fixed
+
+- Typos (#67)
+- CMake code in README (#72)
+
+## [0.5.0] - 2023-07-14
+
+### Added
+
+- `asNative` function to cast wrapper to native objects
+- Add method nodes (#55)
+  - `services::addMethod`
+  - `Node::addMethod`
+- Call method (#55)
+  - `services::call`
+  - `Node::callMethod`
+- Set client timeout with `Client::setTimeout` (#56)
+- `Variant`:
+  - Get/set wrapper types without copy (`Variant::getScalar`, `Variant::getArray`, `Variant::setScalar`, `Variant::setArray`)
+  - `const` version of `Variant::getScalar`, `Variant::getArray`
+- `log` function to generate log message with server's or client's logger
+- Examples
+  - `server_method` (#55)
+  - `client_method` (#55)
+
+### Fixed
+
+- Build with `UA_ENABLE_SUBSCRIPTIONS` or `UA_ENABLE_METHODCALLS` disabled
+- Export symbols of shared library on windows (#58)
+
+## [0.4.1] - 2023-05-30
+
+### Fixed
+
+- Enforce new session in `client_subscription` example (#51)
+- Incorrect `MonitoredItem` passed to data change and event callback (#53)
+
+## [0.4.0] - 2023-05-17
+
+### Added
+
+- Subscription and MonitoredItem service set as free functions in namespace services (#45)
+- High-level `Subscription<T>` and `MonitoredItem<T>` classes (#45)
+- `Server`/`Client` methods to create and list subscriptions (#45):
+  - `Server::createSubscription`
+  - `Client::createSubscription`
+  - `Client::getSubscriptions`
+- Client methods:
+  - `Client::isConnected`
+  - `Client::runIterate` (#45)
+  - `Client::run`
+  - `Client::stop`
+  - `Client::isRunning`
+- Client state callbacks: `Client::onConnected`, `Client::onDisconnected`, `Client::onSessionActivated`, `Client::onSessionClosed` (#50)
+- `ReadValueId` wrapper class (#45)
+- `ExtensionObject` wrapper class (#48)
+- `ByteString::fromBase64` and `ByteString::toBase64` methods
+- `NodeId::toString`/`ExpandedNodeId::toString` method to encode NodeIds as strings, e.g. `ns=1;s=SomeNode`
+- `BadDisconnect` exception for simpler handling of disconnects (#50)
+- Examples:
+  - `client_subscription` (#45, #50)
+
+### Changed
+
+- Update open62541 to v1.3.6 (#49)
+- Use scoped enum `TimestampsToReturn` instead of `UA_TimestampsToReturn`
+- Use scoped enum `AttributeId` instead of `UA_AttributeId`
+- Don't return std::optional from `DataValue` getters
+- Add `DataValue::has*` methods
+- Remove `DataValue::getValuePtr` method
+
+### Fixed
+
+- Amalgamation support (#47)
+
 ## [0.3.0] - 2023-04-29
 
 ### Added
@@ -128,7 +394,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Initial public release
 
-[unreleased]: https://github.com/open62541pp/open62541pp/compare/v0.3.0...HEAD
+[unreleased]: https://github.com/open62541pp/open62541pp/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/open62541pp/open62541pp/releases/tag/v0.11.0
+[0.10.0]: https://github.com/open62541pp/open62541pp/releases/tag/v0.10.0
+[0.9.0]: https://github.com/open62541pp/open62541pp/releases/tag/v0.9.0
+[0.8.0]: https://github.com/open62541pp/open62541pp/releases/tag/v0.8.0
+[0.7.0]: https://github.com/open62541pp/open62541pp/releases/tag/v0.7.0
+[0.6.0]: https://github.com/open62541pp/open62541pp/releases/tag/v0.6.0
+[0.5.0]: https://github.com/open62541pp/open62541pp/releases/tag/v0.5.0
+[0.4.1]: https://github.com/open62541pp/open62541pp/releases/tag/v0.4.1
+[0.4.0]: https://github.com/open62541pp/open62541pp/releases/tag/v0.4.0
 [0.3.0]: https://github.com/open62541pp/open62541pp/releases/tag/v0.3.0
 [0.2.0]: https://github.com/open62541pp/open62541pp/releases/tag/v0.2.0
 [0.1.0]: https://github.com/open62541pp/open62541pp/releases/tag/v0.1.0

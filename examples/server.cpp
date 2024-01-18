@@ -11,20 +11,22 @@ int main() {
                   << "[" << opcua::getLogCategoryName(category) << "] " << msg << std::endl;
     });
 
-    // add variable node
+    // Add a variable node to the Objects node
     auto parentNode = server.getObjectsNode();
-    auto myIntegerNode = parentNode.addVariable({1, "the.answer"}, "the answer");
+    auto myIntegerNode = parentNode.addVariable(
+        {1, "the.answer"},
+        "the answer",
+        opcua::VariableAttributes{}
+            .setDataType<int>()
+            .setDisplayName({"en-US", "the answer"})
+            .setDescription({"en-US", "the answer"})
+    );
 
-    // set node attributes
-    myIntegerNode.writeDataType(opcua::Type::Int32);
-    myIntegerNode.writeDisplayName({"en-US", "the answer"});
-    myIntegerNode.writeDescription({"en-US", "the answer"});
+    // Write a value (attribute) to the node
+    myIntegerNode.writeValueScalar(42);
 
-    // write value
-    myIntegerNode.writeScalar(42);
-
-    // read value
-    std::cout << "The answer is: " << myIntegerNode.readScalar<int>() << std::endl;
+    // Read the value (attribute) from the node
+    std::cout << "The answer is: " << myIntegerNode.readValueScalar<int>() << std::endl;
 
     server.run();
 }

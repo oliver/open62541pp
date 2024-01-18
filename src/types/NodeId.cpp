@@ -2,10 +2,7 @@
 
 #include <cassert>
 
-#include "open62541pp/ErrorHandling.h"
 #include "open62541pp/detail/helper.h"
-
-#include "../open62541_impl.h"
 
 namespace opcua {
 
@@ -36,7 +33,11 @@ NodeId::NodeId(uint16_t namespaceIndex, const Guid& identifier)
 NodeId::NodeId(uint16_t namespaceIndex, const ByteString& identifier)
     : NodeId(fromStringView(namespaceIndex, UA_NODEIDTYPE_BYTESTRING, identifier.get())) {}
 
-uint32_t NodeId::hash() const {
+bool NodeId::isNull() const noexcept {
+    return UA_NodeId_isNull(handle());
+}
+
+uint32_t NodeId::hash() const noexcept {
     return UA_NodeId_hash(handle());
 }
 
@@ -63,6 +64,29 @@ std::variant<uint32_t, String, Guid, ByteString> NodeId::getIdentifier() const {
     }
 }
 
+std::string NodeId::toString() const {
+    std::string result;
+    const auto ns = getNamespaceIndex();
+    if (ns > 0) {
+        result.append("ns=").append(std::to_string(ns)).append(";");
+    }
+    switch (getIdentifierType()) {
+    case NodeIdType::Numeric:
+        result.append("i=").append(std::to_string(getIdentifierAs<uint32_t>()));
+        break;
+    case NodeIdType::String:
+        result.append("s=").append(getIdentifierAs<String>().get());
+        break;
+    case NodeIdType::Guid:
+        result.append("g=").append(getIdentifierAs<Guid>().toString());
+        break;
+    case NodeIdType::ByteString:
+        result.append("b=").append(getIdentifierAs<ByteString>().toBase64());
+        break;
+    }
+    return result;
+}
+
 /* --------------------------------------- ExpandedNodeId --------------------------------------- */
 
 ExpandedNodeId::ExpandedNodeId(const NodeId& id) {
@@ -81,6 +105,10 @@ bool ExpandedNodeId::isLocal() const noexcept {
     return detail::isEmpty(handle()->namespaceUri) && handle()->serverIndex == 0;
 }
 
+uint32_t ExpandedNodeId::hash() const noexcept {
+    return UA_ExpandedNodeId_hash(handle());
+}
+
 NodeId& ExpandedNodeId::getNodeId() noexcept {
     return asWrapper<NodeId>(handle()->nodeId);
 }
@@ -95,6 +123,20 @@ std::string_view ExpandedNodeId::getNamespaceUri() const {
 
 uint32_t ExpandedNodeId::getServerIndex() const noexcept {
     return handle()->serverIndex;
+}
+
+std::string ExpandedNodeId::toString() const {
+    std::string result;
+    const auto svr = getServerIndex();
+    if (svr > 0) {
+        result.append("svr=").append(std::to_string(svr)).append(";");
+    }
+    const auto nsu = getNamespaceUri();
+    if (!nsu.empty()) {
+        result.append("nsu=").append(nsu).append(";");
+    }
+    result.append(getNodeId().toString());
+    return result;
 }
 
 }  // namespace opcua

@@ -6,6 +6,7 @@
 
 #include "open62541pp/TypeWrapper.h"
 #include "open62541pp/open62541.h"
+#include "open62541pp/types/Builtin.h"
 #include "open62541pp/types/DateTime.h"
 #include "open62541pp/types/Variant.h"
 
@@ -19,15 +20,15 @@ namespace opcua {
 class DataValue : public TypeWrapper<UA_DataValue, UA_TYPES_DATAVALUE> {
 public:
     // NOLINTNEXTLINE, false positive?
-    using TypeWrapperBase::TypeWrapperBase;  // inherit contructors
+    using TypeWrapperBase::TypeWrapperBase;  // inherit constructors
 
     DataValue(
-        const Variant& value,
+        Variant value,
         std::optional<DateTime> sourceTimestamp,  // NOLINT
         std::optional<DateTime> serverTimestamp,  // NOLINT
         std::optional<uint16_t> sourcePicoseconds,
         std::optional<uint16_t> serverPicoseconds,
-        std::optional<UA_StatusCode> statusCode
+        std::optional<StatusCode> statusCode
     );
 
     /// Create Variant from scalar value.
@@ -40,23 +41,27 @@ public:
     template <typename... Args>
     static DataValue fromArray(Args&&... args);
 
-    /// Get value as pointer (might be `nullptr` if not set).
-    Variant* getValuePtr() noexcept;
-    /// Get value as pointer (might be `nullptr` if not set).
-    const Variant* getValuePtr() const noexcept;
+    bool hasValue() const noexcept;
+    bool hasSourceTimestamp() const noexcept;
+    bool hasServerTimestamp() const noexcept;
+    bool hasSourcePicoseconds() const noexcept;
+    bool hasServerPicoseconds() const noexcept;
+    bool hasStatusCode() const noexcept;
 
     /// Get value.
-    std::optional<Variant> getValue() const;
+    Variant& getValue() noexcept;
+    /// Get value.
+    const Variant& getValue() const noexcept;
     /// Get source timestamp for the value.
-    std::optional<DateTime> getSourceTimestamp() const;
+    DateTime getSourceTimestamp() const noexcept;
     /// Get server timestamp for the value.
-    std::optional<DateTime> getServerTimestamp() const;
+    DateTime getServerTimestamp() const noexcept;
     /// Get picoseconds interval added to the source timestamp.
-    std::optional<uint16_t> getSourcePicoseconds() const;
+    uint16_t getSourcePicoseconds() const noexcept;
     /// Get picoseconds interval added to the server timestamp.
-    std::optional<uint16_t> getServerPicoseconds() const;
+    uint16_t getServerPicoseconds() const noexcept;
     /// Get status code.
-    std::optional<UA_StatusCode> getStatusCode() const;
+    StatusCode getStatusCode() const noexcept;
 
     /// Set value (copy).
     void setValue(const Variant& value);
@@ -71,7 +76,7 @@ public:
     /// Set picoseconds interval added to the server timestamp.
     void setServerPicoseconds(uint16_t serverPicoseconds);
     /// Set status code.
-    void setStatusCode(UA_StatusCode statusCode);
+    void setStatusCode(StatusCode statusCode);
 };
 
 /* --------------------------------------- Implementation --------------------------------------- */

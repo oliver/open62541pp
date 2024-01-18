@@ -29,20 +29,23 @@ jobs:
       - uses: actions/checkout@v3
         with:
           submodules: recursive
-      - name: Compile and run tests
-        env:
-          CC: ${{ matrix.config.CC }}
-          CXX: ${{ matrix.config.CXX }}
+      - uses: aminya/setup-cpp@v1
+        with:
+          ninja: true
+      - name: Build
         run: |
           mkdir build
           cd build
-          cmake \
+          cmake -G Ninja \
             -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -DUA_ENABLE_ENCRYPTION=OPENSSL \
             -DUAPP_BUILD_TESTS=ON \
             -DUAPP_BUILD_EXAMPLES=ON \
             ${{ matrix.config.flags }} \
             ..
           cmake --build .
+      - name: Run tests
+        run: ctest --test-dir build --output-on-failure
 
   linux-coverage:
     name: Linux Coverage
@@ -51,14 +54,22 @@ jobs:
       - uses: actions/checkout@v3
         with:
           submodules: recursive
-      - name: Install requirements
-        run: pip install gcovr~=6.0
-      - name: Compile and run tests
+      - uses: aminya/setup-cpp@v1
+        with:
+          ninja: true
+          gcovr: "6.0"
+      - name: Build
         run: |
           mkdir build
           cd build
-          cmake -DUAPP_BUILD_TESTS=ON -DUAPP_ENABLE_COVERAGE=ON ..
+          cmake -G Ninja \
+            -DUAPP_BUILD_TESTS=ON \
+            -DUA_ENABLE_ENCRYPTION=OPENSSL \
+            -DUAPP_ENABLE_COVERAGE=ON \
+            ..
           cmake --build .
+      - name: Run tests
+        run: ctest --test-dir build --output-on-failure
       - name: Coverage report (text)
         run: cmake --build build --target open62541pp_coverage_report
       - name: Coverage report (xml)
@@ -72,12 +83,13 @@ jobs:
   windows:
     # https://github.com/actions/runner-images/blob/main/images/win/Windows2019-Readme.md
     # https://github.com/actions/runner-images/blob/main/images/win/Windows2022-Readme.md
-    name: Windows ${{ matrix.config.name }} (${{ matrix.build_type }})
+    name: Windows ${{ matrix.config.name }} (${{ matrix.build_type }}, ${{ matrix.library_type }})
     runs-on: ${{ matrix.config.os }}
     strategy:
       fail-fast: false
       matrix:
         build_type: ["Debug", "Release"]
+        library_type: ["static", "shared"]
         config:
           - { name: Visual Studio 16 2019, os: windows-2019 }
           - { name: Visual Studio 17 2022, os: windows-2022 }
@@ -85,12 +97,18 @@ jobs:
       - uses: actions/checkout@v3
         with:
           submodules: recursive
-      - name: Compile and run tests
+      - name: Build
         run: |
           mkdir build
           cd build
-          cmake -DUAPP_BUILD_TESTS=ON -DUAPP_BUILD_EXAMPLES=ON ..
+          cmake `
+            -DBUILD_SHARED_LIBS=${{ matrix.library_type == 'shared' }} `
+            -DUAPP_BUILD_TESTS=ON `
+            -DUAPP_BUILD_EXAMPLES=ON `
+            ..
           cmake --build . --config ${{ matrix.build_type }}
+      - name: Run tests
+        run: ctest --test-dir build --output-on-failure
 
   macos:
     # https://github.com/actions/runner-images/blob/main/images/macos/macos-12-Readme.md
@@ -106,7 +124,7 @@ jobs:
       - uses: actions/checkout@v3
         with:
           submodules: recursive
-      - name: Compile and run tests
+      - name: Build
         env:
           CC: ${{ matrix.config.CC }}
           CXX: ${{ matrix.config.CXX }}
@@ -119,3 +137,5 @@ jobs:
             -DUAPP_BUILD_EXAMPLES=ON \
             ..
           cmake --build .
+      - name: Run tests
+        run: ctest --test-dir build --output-on-failure

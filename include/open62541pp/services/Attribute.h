@@ -1,21 +1,22 @@
 #pragma once
 
-#include <string>
-#include <string_view>
+#include <cstdint>
 #include <vector>
 
 #include "open62541pp/Common.h"
-#include "open62541pp/detail/helper.h"
+#include "open62541pp/Span.h"
+#include "open62541pp/TypeWrapper.h"
+#include "open62541pp/open62541.h"
 #include "open62541pp/types/Builtin.h"
+#include "open62541pp/types/Composed.h"
 #include "open62541pp/types/DataValue.h"
 #include "open62541pp/types/NodeId.h"
 #include "open62541pp/types/Variant.h"
 
-// forward declarations
+// forward declare
 namespace opcua {
 class Client;
-class Server;
-}  // namespace opcua
+}
 
 namespace opcua::services {
 
@@ -43,6 +44,22 @@ namespace opcua::services {
  */
 
 /**
+ * Generic function to read one or more attributes of one or more nodes (client only).
+ * @ingroup Attribute
+ */
+ReadResponse read(Client& client, const ReadRequest& request);
+
+/**
+ * @overload
+ * @ingroup Attribute
+ */
+ReadResponse read(
+    Client& client,
+    Span<const ReadValueId> nodesToRead,
+    TimestampsToReturn timestamps = TimestampsToReturn::Neither
+);
+
+/**
  * Generic function to read node attributes.
  * @ingroup Attribute
  */
@@ -51,15 +68,27 @@ DataValue readAttribute(
     T& serverOrClient,
     const NodeId& id,
     AttributeId attributeId,
-    TimestampsToReturn timestamps = TimestampsToReturn::Neighter
+    TimestampsToReturn timestamps = TimestampsToReturn::Neither
 );
 
 /// Helper function to read scalar node attributes.
 template <typename AttributeType, typename T>
 inline auto readAttributeScalar(T& serverOrClient, const NodeId& id, AttributeId attributeId) {
     const auto dv = readAttribute(serverOrClient, id, attributeId);
-    return dv.getValuePtr()->template getScalarCopy<AttributeType>();
+    return dv.getValue().template getScalarCopy<AttributeType>();
 }
+
+/**
+ * Generic function to write one or more attributes of one or more nodes (client only).
+ * @ingroup Attribute
+ */
+WriteResponse write(Client& client, const WriteRequest& request);
+
+/**
+ * @overload
+ * @ingroup Attribute
+ */
+WriteResponse write(Client& client, Span<const WriteValue> nodesToWrite);
 
 /**
  * Generic function to write node attributes.
@@ -75,7 +104,7 @@ void writeAttribute(
 /**
  * Read the `NodeId` attribute of a node.
  *
- * This function is mainly used to check the existance of a node.
+ * This function is mainly used to check the existence of a node.
  * @ingroup Attribute
  */
 template <typename T>
@@ -91,7 +120,7 @@ template <typename T>
 inline NodeClass readNodeClass(T& serverOrClient, const NodeId& id) {
     auto dv = readAttribute(serverOrClient, id, AttributeId::NodeClass);
     // workaround to read enum from variant...
-    return *static_cast<NodeClass*>(dv.getValuePtr()->handle()->data);
+    return *static_cast<NodeClass*>(dv.getValue().handle()->data);
 }
 
 /**
@@ -143,7 +172,7 @@ inline uint32_t readWriteMask(T& serverOrClient, const NodeId& id) {
  * Read the `UserWriteMask` attribute of a node.
  *
  * @copydetails readWriteMask
- * In constrast to the write mask, the user write mask is taking access rights into account.
+ * In contrast to the write mask, the user write mask is taking access rights into account.
  * @ingroup Attribute
  */
 template <typename T>
@@ -190,8 +219,16 @@ inline LocalizedText readInverseName(T& serverOrClient, const NodeId& id) {
  * @ingroup Attribute
  */
 template <typename T>
-inline void readDataValue(T& serverOrClient, const NodeId& id, DataValue& value) {
-    value = readAttribute(serverOrClient, id, AttributeId::Value, TimestampsToReturn::Both);
+inline DataValue readDataValue(T& serverOrClient, const NodeId& id) {
+    return readAttribute(serverOrClient, id, AttributeId::Value, TimestampsToReturn::Both);
+}
+
+/// @copydoc readDataValue
+template <typename T>
+[[deprecated("No performance benefit to pass DataValue by reference, return by value instead"
+)]] inline void
+readDataValue(T& serverOrClient, const NodeId& id, DataValue& value) {
+    value = readDataValue(serverOrClient, id);
 }
 
 /**
@@ -199,9 +236,19 @@ inline void readDataValue(T& serverOrClient, const NodeId& id, DataValue& value)
  * @ingroup Attribute
  */
 template <typename T>
-inline void readValue(T& serverOrClient, const NodeId& id, Variant& value) {
+inline Variant readValue(T& serverOrClient, const NodeId& id) {
     DataValue dv = readAttribute(serverOrClient, id, AttributeId::Value);
-    value.swap(dv->value);
+    Variant var;
+    var.swap(dv->value);
+    return var;
+}
+
+/// @copydoc readValue
+template <typename T>
+[[deprecated("No performance benefit to pass Variant by reference, return by value instead."
+)]] inline void
+readValue(T& serverOrClient, const NodeId& id, Variant& value) {
+    value = readValue(serverOrClient, id);
 }
 
 /**
@@ -235,8 +282,8 @@ inline ValueRank readValueRank(T& serverOrClient, const NodeId& id) {
 template <typename T>
 inline std::vector<uint32_t> readArrayDimensions(T& serverOrClient, const NodeId& id) {
     const auto dv = readAttribute(serverOrClient, id, AttributeId::ArrayDimensions);
-    if (dv.getValuePtr()->isArray()) {
-        return dv.getValuePtr()->template getArrayCopy<uint32_t>();
+    if (dv.getValue().isArray()) {
+        return dv.getValue().template getArrayCopy<uint32_t>();
     }
     return {};
 }
@@ -258,7 +305,7 @@ inline uint8_t readAccessLevel(T& serverOrClient, const NodeId& id) {
  * Read the `UserAccessLevel` attribute a variable node.
  *
  * @copydetails readAccessLevel
- * In constrast to the access level, the user acceess level is taking access rights into account.
+ * In contrast to the access level, the user access level is taking access rights into account.
  * @ingroup Attribute
  */
 template <typename T>
@@ -381,17 +428,6 @@ inline void writeValue(T& serverOrClient, const NodeId& id, const Variant& value
  * @ingroup Attribute
  */
 template <typename T>
-inline void writeDataType(T& serverOrClient, const NodeId& id, Type type) {
-    const auto typeId = ::opcua::detail::getUaDataType(type)->typeId;
-    writeAttribute(serverOrClient, id, AttributeId::DataType, DataValue::fromScalar(typeId));
-}
-
-/**
- * Write the `DataType` attribute of a variable (type) node by node id.
- * @copydetails readDataType
- * @ingroup Attribute
- */
-template <typename T>
 inline void writeDataType(T& serverOrClient, const NodeId& id, const NodeId& typeId) {
     writeAttribute(serverOrClient, id, AttributeId::DataType, DataValue::fromScalar(typeId));
 }
@@ -408,7 +444,7 @@ inline void writeValueRank(T& serverOrClient, const NodeId& id, ValueRank valueR
 }
 
 /**
- * Write the `ArrayDimensions` attribute of variable (type) node.
+ * Write the `ArrayDimensions` attribute of a variable (type) node.
  *
  * Should be unspecified if ValueRank is <= 0 (ValueRank::Any, ValueRank::Scalar,
  * ValueRank::ScalarOrOneDimension, ValueRank::OneOrMoreDimensions). The dimension zero is a
@@ -418,7 +454,7 @@ inline void writeValueRank(T& serverOrClient, const NodeId& id, ValueRank valueR
  */
 template <typename T>
 inline void writeArrayDimensions(
-    T& serverOrClient, const NodeId& id, const std::vector<uint32_t>& dimensions
+    T& serverOrClient, const NodeId& id, Span<const uint32_t> dimensions
 ) {
     writeAttribute(
         serverOrClient, id, AttributeId::ArrayDimensions, DataValue::fromArray(dimensions)
@@ -426,7 +462,7 @@ inline void writeArrayDimensions(
 }
 
 /**
- * Write the `AccessLevel` attribute of variable node.
+ * Write the `AccessLevel` attribute of a variable node.
  * @copydetails readAccessLevel
  * @ingroup Attribute
  */
@@ -437,7 +473,7 @@ inline void writeAccessLevel(T& serverOrClient, const NodeId& id, uint8_t mask) 
 }
 
 /**
- * Write the `UserAccessLevel` attribute of variable node.
+ * Write the `UserAccessLevel` attribute of a variable node.
  * @copydetails readUserAccessLevel
  * @note Cannot be written from the server.
  * @ingroup Attribute

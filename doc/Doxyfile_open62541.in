@@ -6,9 +6,10 @@ PROJECT_LOGO           =
 
 OUTPUT_DIRECTORY       = "${doxygen_open62541_output_dir}"
 OUTPUT_LANGUAGE        = English
+BRIEF_MEMBER_DESC      = NO
 JAVADOC_AUTOBRIEF      = YES
-AUTOLINK_SUPPORT       = YES
 MARKDOWN_SUPPORT       = YES
+AUTOLINK_SUPPORT       = YES
 USE_MDFILE_AS_MAINPAGE = "${doxygen_open62541_input_dir}/README.md"
 OPTIMIZE_OUTPUT_FOR_C  = YES
 ALIASES                = "rst=\verbatim embed:rst"
@@ -16,11 +17,9 @@ ALIASES               += "endrst=\endverbatim"
 
 # Build-related options
 EXTRACT_ALL            = YES
-DISABLE_INDEX          = NO
-GENERATE_TREEVIEW      = NO
-TREEVIEW_WIDTH         = 300
 SHOW_FILES             = YES
 SHOW_NAMESPACES        = YES
+SORT_MEMBER_DOCS       = NO
 LAYOUT_FILE            = "${CMAKE_CURRENT_SOURCE_DIR}/DoxygenLayout_open62541.xml"
 QUIET                  = YES
 
@@ -33,8 +32,9 @@ RECURSIVE              = YES
 # Source browsing
 SOURCE_BROWSER         = YES
 REFERENCED_BY_RELATION = YES
-REFERENCES_RELATION    = YES
+REFERENCES_RELATION    = NO
 REFERENCES_LINK_SOURCE = YES
+STRIP_CODE_COMMENTS    = NO
 
 # Output
 GENERATE_LATEX         = NO
@@ -50,7 +50,22 @@ HTML_OUTPUT            = "${doxygen_open62541_html_dir}"
 HTML_COLORSTYLE        = LIGHT
 
 ENUM_VALUES_PER_LINE   = 0
+GENERATE_TREEVIEW      = NO
+TREEVIEW_WIDTH         = 300
 EXT_LINKS_IN_WINDOW    = YES
+
+# Preprocessor
+MACRO_EXPANSION        = YES
+PREDEFINED             = UA_ENABLE_DA \
+                         UA_ENABLE_DISCOVERY \
+                         UA_ENABLE_ENCRYPTION \
+                         UA_ENABLE_HISTORIZING \
+                         UA_ENABLE_METHODCALLS \
+                         UA_ENABLE_NODEMANAGEMENT \
+                         UA_ENABLE_PUBSUB \
+                         UA_ENABLE_QUERY \
+                         UA_ENABLE_SUBSCRIPTIONS \
+                         UA_ENABLE_SUBSCRIPTIONS_EVENTS
 
 # Dot diagrams
 HAVE_DOT               = NO

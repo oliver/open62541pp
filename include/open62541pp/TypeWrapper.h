@@ -135,11 +135,6 @@ public:
         return typeIndex;
     }
 
-    /// Get type as UA_DataType object.
-    static const UA_DataType* getDataType() {
-        return detail::getUaDataType<typeIndex>();
-    }
-
     /// Return pointer to native object.
     constexpr T* handle() noexcept {
         return &data_;
@@ -152,18 +147,18 @@ public:
 
 protected:
     inline static void checkMemSize() {
-        assert(sizeof(T) == getDataType()->memSize);  // NOLINT
+        assert(sizeof(T) == UA_TYPES[typeIndex].memSize);
     }
 
     void clear() noexcept {
         checkMemSize();
-        UA_clear(&data_, getDataType());
+        UA_clear(&data_, &UA_TYPES[typeIndex]);
     }
 
     void copy(const T& data) {
         clear();
         checkMemSize();
-        auto status = UA_copy(&data, &data_, getDataType());  // deep copy of data
+        auto status = UA_copy(&data, &data_, &UA_TYPES[typeIndex]);  // deep copy of data
         detail::throwOnBadStatus(status);
     }
 
@@ -196,28 +191,89 @@ constexpr void assertIsPointerInterconvertible() noexcept {
     static_assert(sizeof(T1) == sizeof(T2));
 }
 
+template <typename WrapperType, typename NativeType>
+constexpr void assertIsWrappedType() noexcept {
+    static_assert(std::is_same_v<NativeType, typename WrapperType::NativeType>);
+}
+
 }  // namespace detail
 
 /**
- * Cast native `UA_*` type object references to TypeWrapper object references.
- *
+ * Cast native `UA_*` type object pointers to TypeWrapper object pointers.
  * This is especially helpful to avoid copies in getter methods of composed types.
- * A reference to a native type object be casted to a reference to a wrapper object.
  * @see https://en.cppreference.com/w/cpp/language/static_cast#pointer-interconvertible
+ * @see https://github.com/open62541pp/open62541pp/issues/30
  * @ingroup TypeWrapper
  */
-template <typename WrapperType, typename NativeType = typename WrapperType::Native>
-constexpr WrapperType& asWrapper(NativeType& native) noexcept {
+template <typename WrapperType, typename NativeType = typename WrapperType::NativeType>
+constexpr WrapperType* asWrapper(NativeType* native) noexcept {
+    detail::assertIsWrappedType<WrapperType, NativeType>();
     detail::assertIsPointerInterconvertible<WrapperType, NativeType>();
-    return *static_cast<WrapperType*>(static_cast<void*>(&native));
+    return static_cast<WrapperType*>(static_cast<void*>(native));
+}
+
+/// @copydoc asWrapper(NativeType*)
+/// @ingroup TypeWrapper
+template <typename WrapperType, typename NativeType = typename WrapperType::NativeType>
+constexpr const WrapperType* asWrapper(const NativeType* native) noexcept {
+    detail::assertIsWrappedType<WrapperType, NativeType>();
+    detail::assertIsPointerInterconvertible<WrapperType, NativeType>();
+    return static_cast<const WrapperType*>(static_cast<const void*>(native));
+}
+
+/**
+ * Cast native `UA_*` type object references to TypeWrapper object references.
+ * @copydetails asWrapper(NativeType*)
+ * @ingroup TypeWrapper
+ */
+template <typename WrapperType, typename NativeType = typename WrapperType::NativeType>
+constexpr WrapperType& asWrapper(NativeType& native) noexcept {
+    return *asWrapper<WrapperType, NativeType>(&native);
 }
 
 /// @copydoc asWrapper(NativeType&)
 /// @ingroup TypeWrapper
-template <typename WrapperType, typename NativeType = typename WrapperType::Native>
+template <typename WrapperType, typename NativeType = typename WrapperType::NativeType>
 constexpr const WrapperType& asWrapper(const NativeType& native) noexcept {
+    return *asWrapper<WrapperType, NativeType>(&native);
+}
+
+/**
+ * Cast TypeWrapper object pointers to native `UA_*` type object pointers.
+ * @see https://en.cppreference.com/w/cpp/language/static_cast#pointer-interconvertible
+ * @ingroup TypeWrapper
+ */
+template <typename WrapperType, typename NativeType = typename WrapperType::NativeType>
+constexpr NativeType* asNative(WrapperType* wrapper) noexcept {
+    detail::assertIsWrappedType<WrapperType, NativeType>();
     detail::assertIsPointerInterconvertible<WrapperType, NativeType>();
-    return *static_cast<const WrapperType*>(static_cast<const void*>(&native));
+    return static_cast<NativeType*>(static_cast<void*>(wrapper));
+}
+
+/// @copydoc asNative(WrapperType*)
+/// @ingroup TypeWrapper
+template <typename WrapperType, typename NativeType = typename WrapperType::NativeType>
+constexpr const NativeType* asNative(const WrapperType* wrapper) noexcept {
+    detail::assertIsWrappedType<WrapperType, NativeType>();
+    detail::assertIsPointerInterconvertible<WrapperType, NativeType>();
+    return static_cast<const NativeType*>(static_cast<const void*>(wrapper));
+}
+
+/**
+ * Cast TypeWrapper object references to native `UA_*` type object references.
+ * @copydetails asNative(WrapperType*)
+ * @ingroup TypeWrapper
+ */
+template <typename WrapperType, typename NativeType = typename WrapperType::NativeType>
+constexpr NativeType& asNative(WrapperType& wrapper) noexcept {
+    return *asNative<WrapperType, NativeType>(&wrapper);
+}
+
+/// @copydoc asNative(WrapperType&)
+/// @ingroup TypeWrapper
+template <typename WrapperType, typename NativeType = typename WrapperType::NativeType>
+constexpr const NativeType& asNative(const WrapperType& wrapper) noexcept {
+    return *asNative<WrapperType, NativeType>(&wrapper);
 }
 
 /* ----------------------------------------- Comparison ----------------------------------------- */
@@ -225,33 +281,33 @@ constexpr const WrapperType& asWrapper(const NativeType& native) noexcept {
 // generate from UA_* type comparison
 
 template <typename T, typename = std::enable_if_t<detail::IsTypeWrapper<T>::value>>
-inline bool operator==(const T& left, const T& right) noexcept {
-    return (*left.handle() == *right.handle());
+inline bool operator==(const T& lhs, const T& rhs) noexcept {
+    return (*lhs.handle() == *rhs.handle());
 }
 
 template <typename T, typename = std::enable_if_t<detail::IsTypeWrapper<T>::value>>
-inline bool operator!=(const T& left, const T& right) noexcept {
-    return (*left.handle() != *right.handle());
+inline bool operator!=(const T& lhs, const T& rhs) noexcept {
+    return (*lhs.handle() != *rhs.handle());
 }
 
 template <typename T, typename = std::enable_if_t<detail::IsTypeWrapper<T>::value>>
-inline bool operator<(const T& left, const T& right) noexcept {
-    return (*left.handle() < *right.handle());
+inline bool operator<(const T& lhs, const T& rhs) noexcept {
+    return (*lhs.handle() < *rhs.handle());
 }
 
 template <typename T, typename = std::enable_if_t<detail::IsTypeWrapper<T>::value>>
-inline bool operator>(const T& left, const T& right) noexcept {
-    return (*left.handle() > *right.handle());
+inline bool operator>(const T& lhs, const T& rhs) noexcept {
+    return (*lhs.handle() > *rhs.handle());
 }
 
 template <typename T, typename = std::enable_if_t<detail::IsTypeWrapper<T>::value>>
-inline bool operator<=(const T& left, const T& right) noexcept {
-    return (*left.handle() <= *right.handle());
+inline bool operator<=(const T& lhs, const T& rhs) noexcept {
+    return (*lhs.handle() <= *rhs.handle());
 }
 
 template <typename T, typename = std::enable_if_t<detail::IsTypeWrapper<T>::value>>
-inline bool operator>=(const T& left, const T& right) noexcept {
-    return (*left.handle() >= *right.handle());
+inline bool operator>=(const T& lhs, const T& rhs) noexcept {
+    return (*lhs.handle() >= *rhs.handle());
 }
 
 }  // namespace opcua

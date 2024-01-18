@@ -40,32 +40,38 @@ int main() {
     const auto servers = client.findServers("opc.tcp://localhost:4840");
     size_t serverIndex = 0;
     for (const auto& server : servers) {
-        const auto name = server.getApplicationUri().get();
-        std::cout << "Server[" << serverIndex++ << "] " << name
-                  << "\n\tName:             " << server.getApplicationName().getText()
-                  << "\n\tApplication URI:  " << server.getApplicationUri().get()
-                  << "\n\tProduct URI:      " << server.getProductUri().get()
-                  << "\n\tApplication type: " << getEnumName(server.getApplicationType())
-                  << "\n\tDiscovery URLs:   ";
+        const auto& name = server.getApplicationUri();
+        std::cout
+            << "Server[" << serverIndex++ << "] " << name << "\n"
+            << "\tName:             " << server.getApplicationName().getText() << "\n"
+            << "\tApplication URI:  " << server.getApplicationUri() << "\n"
+            << "\tProduct URI:      " << server.getProductUri() << "\n"
+            << "\tApplication type: " << getEnumName(server.getApplicationType()) << "\n"
+            << "\tDiscovery URLs:\n";
 
         const auto discoveryUrls = server.getDiscoveryUrls();
         if (discoveryUrls.empty()) {
             std::cout << "No discovery urls provided. Skip endpoint search.";
         }
         for (const auto& url : discoveryUrls) {
-            std::cout << "\n\t - " << url;
+            std::cout << "\t- " << url << "\n";
         }
 
         for (const auto& url : discoveryUrls) {
             size_t endpointIndex = 0;
             for (const auto& endpoint : client.getEndpoints(url)) {
-                std::cout << "\n\tEndpoint[" << endpointIndex++ << "]:"
-                          << "\n\t- Endpoint URL:      " << endpoint.getEndpointUrl().get()
-                          << "\n\t- Transport profile: " << endpoint.getTransportProfileUri().get()
-                          << "\n\t- Security mode:     " << getEnumName(endpoint.getSecurityMode())
-                          << "\n\t- Security profile:  " << endpoint.getSecurityPolicyUri().get()
-                          << "\n\t- Security level:    " << endpoint.getSecurityLevel()
-                          << std::endl;
+                std::cout
+                    << "\tEndpoint[" << endpointIndex++ << "]:\n"
+                    << "\t- Endpoint URL:      " << endpoint.getEndpointUrl() << "\n"
+                    << "\t- Transport profile: " << endpoint.getTransportProfileUri() << "\n"
+                    << "\t- Security mode:     " << getEnumName(endpoint.getSecurityMode()) << "\n"
+                    << "\t- Security profile:  " << endpoint.getSecurityPolicyUri() << "\n"
+                    << "\t- Security level:    " << endpoint.getSecurityLevel() << "\n"
+                    << "\t- User identity token:\n";
+
+                for (const auto& token : endpoint.getUserIdentityTokens()) {
+                    std::cout << "\t  - " << token.getPolicyId() << "\n";
+                }
             }
         }
     }

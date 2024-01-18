@@ -1,0 +1,30 @@
+option(UAPP_ENABLE_CLANG_TIDY "Enable static analysis with clang-tidy" OFF)
+if(UAPP_ENABLE_CLANG_TIDY)
+    message(STATUS "Static code analysis with clang-tidy enabled")
+
+    # https://gitlab.kitware.com/cmake/cmake/-/issues/22081
+    if(UAPP_ENABLE_PCH AND NOT CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+        message(SEND_ERROR "clang-tidy only works with Clang when UAPP_ENABLE_PCH is enabled")
+    endif()
+
+    find_program(CLANG_TIDY_EXE NAMES clang-tidy)
+    if(CLANG_TIDY_EXE)
+        message(STATUS "Found clang-tidy: ${CLANG_TIDY_EXE}")
+        set(CMAKE_CXX_CLANG_TIDY "${CLANG_TIDY_EXE}")
+    else()
+        message(SEND_ERROR "clang-tidy requested but executable not found")
+    endif()
+endif()
+
+option(UAPP_ENABLE_INCLUDE_WHAT_YOU_USE "Enable static analysis with include-what-you-use" OFF)
+if(UAPP_ENABLE_INCLUDE_WHAT_YOU_USE)
+    message(STATUS "Static code analysis with include-what-you-use enabled")
+
+    find_program(IWYU_EXE include-what-you-use iwyu)
+    if(IWYU_EXE)
+        message(STATUS "Found include-what-you-use: ${IWYU_EXE}")
+        set(CMAKE_CXX_INCLUDE_WHAT_YOU_USE "${IWYU_EXE};-Xiwyu;--mapping_file=${PROJECT_SOURCE_DIR}/.open62541pp.imp")
+    else()
+        message(SEND_ERROR "include-what-you-use requested but executable not found")
+    endif()
+endif()

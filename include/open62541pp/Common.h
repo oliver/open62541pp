@@ -180,8 +180,35 @@ enum class TimestampsToReturn : uint32_t {
     Source   = 0,
     Server   = 1,
     Both     = 2,
-    Neighter = 3,
+    Neither  = 3,
     Invalid  = 4,
+    // clang-format on
+};
+
+/**
+ * Monitoring mode.
+ * @see UA_MonitoringMode
+ * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/7.23
+ */
+enum class MonitoringMode : uint32_t {
+    // clang-format off
+    Disabled  = 0,
+    Sampling  = 1,
+    Reporting = 2,
+    // clang-format on
+};
+
+/**
+ * Message security mode.
+ * @see UA_MessageSecurityMode
+ * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/7.20
+ */
+enum class MessageSecurityMode : uint32_t {
+    // clang-format off
+    Invalid        = 0,  ///< Will always be rejected
+    None           = 1,  ///< No security applied
+    Sign           = 2,  ///< All messages are signed but not encrypted
+    SignAndEncrypt = 3,  ///< All messages are signed and encrypted
     // clang-format on
 };
 

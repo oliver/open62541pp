@@ -1,16 +1,22 @@
 #pragma once
 
 #include <cstdint>
-#include <string>
 #include <string_view>
 #include <utility>  // move
 #include <vector>
 
 #include "open62541pp/Common.h"
-#include "open62541pp/Server.h"
-#include "open62541pp/TypeConverter.h"  // guessType
-#include "open62541pp/services/services.h"
+#include "open62541pp/Config.h"
+#include "open62541pp/NodeIds.h"
+#include "open62541pp/Span.h"
+#include "open62541pp/TypeConverter.h"  // guessDataType
+#include "open62541pp/TypeWrapper.h"  // asWrapper
+#include "open62541pp/open62541.h"
+#include "open62541pp/services/Attribute.h"
+#include "open62541pp/services/Method.h"
+#include "open62541pp/services/NodeManagement.h"
 #include "open62541pp/types/Builtin.h"
+#include "open62541pp/types/Composed.h"
 #include "open62541pp/types/DataValue.h"
 #include "open62541pp/types/NodeId.h"
 #include "open62541pp/types/Variant.h"
@@ -18,12 +24,12 @@
 namespace opcua {
 
 /**
- * High-level node object to access node attribute, browse and populate address space.
+ * High-level node class to access node attribute, browse and populate address space.
  *
  * The Node API is just a more convenient way of using the free functions in the `services`
  * namespace.
  *
- * Node objects are usefull as-is but they do not expose the entire OPC UA protocol. You can get
+ * Node objects are useful as-is but they do not expose the entire OPC UA protocol. You can get
  * access to the associated NodeId instance with the getNodeId() method and apply the native
  * open62541 functions or the free functions in the `services` namespace.
  *
@@ -32,105 +38,205 @@ namespace opcua {
 template <typename ServerOrClient>
 class Node {
 public:
-    /// Create Node object.
-    /// @exception BadStatus (BadNodeIdUnknown) If `checkExists` enabled and `id` not found
-    Node(ServerOrClient connection, NodeId id, bool checkExists = true)
-        : connection_(std::move(connection)),
-          nodeId_(std::move(id)) {
-        if (checkExists) {
-            services::readNodeId(connection_, nodeId_);
-        }
-    }
+    /// Create a Node object.
+    Node(ServerOrClient& connection, NodeId id)
+        : connection_(connection),
+          nodeId_(std::move(id)) {}
 
-    /// Get server/client instance.
+    /// Get the server/client instance.
     ServerOrClient& getConnection() noexcept {
         return connection_;
     }
 
-    /// Get server/client instance.
+    /// Get the server/client instance.
     const ServerOrClient& getConnection() const noexcept {
         return connection_;
     }
 
-    /// Get node id.
+    /// Get the node id.
     const NodeId& getNodeId() const noexcept {
         return nodeId_;
     }
+
+    /// Check if the Node exists in the most efficient manner.
+    /// If the instance is of type `Node<Server>`, the internal node store is searched.
+    /// If the instance is of type `Node<Client>`, an actual read request to the server is made.
+    bool exists() noexcept;
 
     /// @copydoc services::addFolder
     Node addFolder(
         const NodeId& id,
         std::string_view browseName,
+        const ObjectAttributes& attributes = {},
         const NodeId& referenceType = ReferenceTypeId::HasComponent
     ) {
-        services::addFolder(connection_, nodeId_, id, browseName, referenceType);
-        return {connection_, id, false};
+        NodeId resultingId = services::addFolder(
+            connection_, nodeId_, id, browseName, attributes, referenceType
+        );
+        return {connection_, resultingId};
     }
 
     /// @copydoc services::addObject
     Node addObject(
         const NodeId& id,
         std::string_view browseName,
+        const ObjectAttributes& attributes = {},
         const NodeId& objectType = ObjectTypeId::BaseObjectType,
         const NodeId& referenceType = ReferenceTypeId::HasComponent
     ) {
-        services::addObject(connection_, nodeId_, id, browseName, objectType, referenceType);
-        return {connection_, id, false};
+        NodeId resultingId = services::addObject(
+            connection_, nodeId_, id, browseName, attributes, objectType, referenceType
+        );
+        return {connection_, resultingId};
     }
 
     /// @copydoc services::addVariable
     Node addVariable(
         const NodeId& id,
         std::string_view browseName,
+        const VariableAttributes& attributes = {},
         const NodeId& variableType = VariableTypeId::BaseDataVariableType,
         const NodeId& referenceType = ReferenceTypeId::HasComponent
     ) {
-        services::addVariable(connection_, nodeId_, id, browseName, variableType, referenceType);
-        return {connection_, id, false};
+        NodeId resultingId = services::addVariable(
+            connection_, nodeId_, id, browseName, attributes, variableType, referenceType
+        );
+        return {connection_, resultingId};
     }
 
     /// @copydoc services::addProperty
-    Node addProperty(const NodeId& id, std::string_view browseName) {
-        services::addProperty(connection_, nodeId_, id, browseName);
-        return {connection_, id, false};
+    Node addProperty(
+        const NodeId& id, std::string_view browseName, const VariableAttributes& attributes = {}
+    ) {
+        NodeId resultingId = services::addProperty(
+            connection_, nodeId_, id, browseName, attributes
+        );
+        return {connection_, resultingId};
     }
+
+#ifdef UA_ENABLE_METHODCALLS
+    /// @copydoc services::addMethod
+    Node addMethod(
+        const NodeId& id,
+        std::string_view browseName,
+        services::MethodCallback callback,
+        Span<const Argument> inputArguments,
+        Span<const Argument> outputArguments,
+        const MethodAttributes& attributes = {},
+        const NodeId& referenceType = ReferenceTypeId::HasComponent
+    ) {
+        NodeId resultingId = services::addMethod(
+            connection_,
+            nodeId_,
+            id,
+            browseName,
+            std::move(callback),
+            inputArguments,
+            outputArguments,
+            attributes,
+            referenceType
+        );
+        return {connection_, resultingId};
+    }
+#endif
 
     /// @copydoc services::addObjectType
     Node addObjectType(
         const NodeId& id,
         std::string_view browseName,
+        const ObjectTypeAttributes& attributes = {},
         const NodeId& referenceType = ReferenceTypeId::HasSubtype
     ) {
-        services::addObjectType(connection_, nodeId_, id, browseName, referenceType);
-        return {connection_, id, false};
+        NodeId resultingId = services::addObjectType(
+            connection_, nodeId_, id, browseName, attributes, referenceType
+        );
+        return {connection_, resultingId};
     }
 
     /// @copydoc services::addVariableType
     Node addVariableType(
         const NodeId& id,
         std::string_view browseName,
+        const VariableTypeAttributes& attributes = {},
         const NodeId& variableType = VariableTypeId::BaseDataVariableType,
         const NodeId& referenceType = ReferenceTypeId::HasSubtype
     ) {
-        services::addVariableType(
-            connection_, nodeId_, id, browseName, variableType, referenceType
+        NodeId resultingId = services::addVariableType(
+            connection_, nodeId_, id, browseName, attributes, variableType, referenceType
         );
-        return {connection_, id, false};
+        return {connection_, resultingId};
+    }
+
+    /// @copydoc services::addReferenceType
+    Node addReferenceType(
+        const NodeId& id,
+        std::string_view browseName,
+        const ReferenceTypeAttributes& attributes = {},
+        const NodeId& referenceType = ReferenceTypeId::HasSubtype
+    ) {
+        NodeId resultingId = services::addReferenceType(
+            connection_, nodeId_, id, browseName, attributes, referenceType
+        );
+        return {connection_, resultingId};
+    }
+
+    /// @copydoc services::addDataType
+    Node addDataType(
+        const NodeId& id,
+        std::string_view browseName,
+        const DataTypeAttributes& attributes = {},
+        const NodeId& referenceType = ReferenceTypeId::HasSubtype
+    ) {
+        NodeId resultingId = services::addDataType(
+            connection_, nodeId_, id, browseName, attributes, referenceType
+        );
+        return {connection_, resultingId};
+    }
+
+    /// @copydoc services::addView
+    Node addView(
+        const NodeId& id,
+        std::string_view browseName,
+        const ViewAttributes& attributes = {},
+        const NodeId& referenceType = ReferenceTypeId::Organizes
+    ) {
+        NodeId resultingId = services::addView(
+            connection_, nodeId_, id, browseName, attributes, referenceType
+        );
+        return {connection_, resultingId};
     }
 
     /// @copydoc services::addReference
-    void addReference(const NodeId& targetId, const NodeId& referenceType, bool forward = true) {
+    /// @return Current node instance to chain multiple methods (fluent interface)
+    Node& addReference(const NodeId& targetId, const NodeId& referenceType, bool forward = true) {
         services::addReference(connection_, nodeId_, targetId, referenceType, forward);
+        return *this;
     }
 
     /// @copydoc services::addModellingRule
-    void addModellingRule(ModellingRule rule) {
+    /// @return Current node instance to chain multiple methods (fluent interface)
+    Node& addModellingRule(ModellingRule rule) {
         services::addModellingRule(connection_, nodeId_, rule);
+        return *this;
     }
 
     /// @copydoc services::deleteNode
     void deleteNode(bool deleteReferences = true) {
         services::deleteNode(connection_, nodeId_, deleteReferences);
+    }
+
+    /// @copydoc services::deleteReference
+    /// @return Current node instance to chain multiple methods (fluent interface)
+    Node& deleteReference(
+        const NodeId& targetId,
+        const NodeId& referenceType,
+        bool isForward,
+        bool deleteBidirectional
+    ) {
+        services::deleteReference(
+            connection_, nodeId_, targetId, referenceType, isForward, deleteBidirectional
+        );
+        return *this;
     }
 
     /// Browse references.
@@ -160,12 +266,21 @@ public:
     /// Browse child node specified by its relative path from this node (only local nodes).
     /// The relative path is specified using browse names.
     /// @exception BadStatus (BadNoMatch) If path not found
-    Node browseChild(const std::vector<QualifiedName>& path);
+    Node browseChild(Span<const QualifiedName> path);
 
     /// Browse parent node.
     /// A Node may have several parents, the first found is returned.
     /// @exception BadStatus (BadNotFound) If no parent node found
     Node browseParent();
+
+#ifdef UA_ENABLE_METHODCALLS
+    /// Call a server method and return results.
+    /// @param methodId NodeId of the method (`HasComponent` reference to current node required)
+    /// @param inputArguments Input argument values
+    std::vector<Variant> callMethod(const NodeId& methodId, Span<const Variant> inputArguments) {
+        return services::call(connection_, nodeId_, methodId, inputArguments);
+    }
+#endif
 
     /// @copydoc services::readNodeClass
     NodeClass readNodeClass() {
@@ -213,29 +328,51 @@ public:
     }
 
     /// @copydoc services::readDataValue
-    void readDataValue(DataValue& value) {
-        services::readDataValue(connection_, nodeId_, value);
+    DataValue readDataValue() {
+        return services::readDataValue(connection_, nodeId_);
+    }
+
+    /// @copydoc services::readDataValue
+    [[deprecated("No performance benefit to pass DataValue by reference, return by value instead"
+    )]] void
+    readDataValue(DataValue& value) {
+        value = services::readDataValue(connection_, nodeId_);
     }
 
     /// @copydoc services::readValue
-    void readValue(Variant& value) {
-        services::readValue(connection_, nodeId_, value);
+    Variant readValue() {
+        return services::readValue(connection_, nodeId_);
     }
 
-    /// Read scalar from variable node.
-    template <typename T>
-    T readScalar() {
-        Variant variant;
-        readValue(variant);
-        return variant.getScalarCopy<T>();
+    /// @copydoc services::readValue
+    [[deprecated("No performance benefit to pass Variant by reference, return by value instead"
+    )]] void
+    readValue(Variant& value) {
+        value = services::readValue(connection_, nodeId_);
     }
 
-    /// Read array from variable node.
+    /// Read scalar value from variable node.
     template <typename T>
-    std::vector<T> readArray() {
-        Variant variant;
-        readValue(variant);
-        return variant.getArrayCopy<T>();
+    T readValueScalar() {
+        return readValue().template getScalarCopy<T>();
+    }
+
+    /// @copydoc readValueScalar
+    template <typename T>
+    [[deprecated("Use Node::readValueScalar instead")]] T readScalar() {
+        return readValueScalar<T>();
+    }
+
+    /// Read array value from variable node.
+    template <typename T>
+    std::vector<T> readValueArray() {
+        return readValue().template getArrayCopy<T>();
+    }
+
+    /// @copydoc readValueArray
+    template <typename T>
+    [[deprecated("Use Node::readValueArray instead")]] std::vector<T> readArray() {
+        return readValueArray<T>();
     }
 
     /// @copydoc services::readDataType
@@ -268,131 +405,188 @@ public:
         return services::readMinimumSamplingInterval(connection_, nodeId_);
     }
 
+    /// Read the value of an object property.
+    /// @param propertyName Browse name of the property (variable node)
+    Variant readObjectProperty(const QualifiedName& propertyName);
+
     /// @copydoc services::writeDisplayName
-    void writeDisplayName(const LocalizedText& name) {
+    /// @return Current node instance to chain multiple methods (fluent interface)
+    Node& writeDisplayName(const LocalizedText& name) {
         services::writeDisplayName(connection_, nodeId_, name);
+        return *this;
     }
 
     /// @copydoc services::writeDescription
-    void writeDescription(const LocalizedText& desc) {
+    /// @return Current node instance to chain multiple methods (fluent interface)
+    Node& writeDescription(const LocalizedText& desc) {
         services::writeDescription(connection_, nodeId_, desc);
+        return *this;
     }
 
     /// @copydoc services::writeWriteMask
-    void writeWriteMask(uint32_t mask) {
+    /// @return Current node instance to chain multiple methods (fluent interface)
+    Node& writeWriteMask(uint32_t mask) {
         services::writeWriteMask(connection_, nodeId_, mask);
+        return *this;
     }
 
     /// @copydoc services::writeWriteMask
-    void writeUserWriteMask(uint32_t mask) {
+    /// @return Current node instance to chain multiple methods (fluent interface)
+    Node& writeUserWriteMask(uint32_t mask) {
         services::writeUserWriteMask(connection_, nodeId_, mask);
+        return *this;
     }
 
     /// @copydoc services::writeIsAbstract
-    void writeIsAbstract(bool isAbstract) {
+    /// @return Current node instance to chain multiple methods (fluent interface)
+    Node& writeIsAbstract(bool isAbstract) {
         services::writeIsAbstract(connection_, nodeId_, isAbstract);
+        return *this;
     }
 
     /// @copydoc services::writeSymmetric
-    void writeSymmetric(bool symmetric) {
+    /// @return Current node instance to chain multiple methods (fluent interface)
+    Node& writeSymmetric(bool symmetric) {
         services::writeSymmetric(connection_, nodeId_, symmetric);
+        return *this;
     }
 
     /// @copydoc services::writeInverseName
-    void writeInverseName(const LocalizedText& name) {
+    /// @return Current node instance to chain multiple methods (fluent interface)
+    Node& writeInverseName(const LocalizedText& name) {
         services::writeInverseName(connection_, nodeId_, name);
+        return *this;
     }
 
     /// @copydoc services::writeDataValue
-    void writeDataValue(const DataValue& value) {
+    /// @return Current node instance to chain multiple methods (fluent interface)
+    Node& writeDataValue(const DataValue& value) {
         services::writeDataValue(connection_, nodeId_, value);
+        return *this;
     }
 
     /// @copydoc services::writeValue
-    void writeValue(const Variant& value) {
+    /// @return Current node instance to chain multiple methods (fluent interface)
+    Node& writeValue(const Variant& value) {
         services::writeValue(connection_, nodeId_, value);
+        return *this;
     }
 
     /// Write scalar to variable node.
-    template <typename T, Type type = detail::guessType<T>()>
-    void writeScalar(const T& value) {
+    /// @return Current node instance to chain multiple methods (fluent interface)
+    template <typename T>
+    Node& writeValueScalar(const T& value) {
         // NOLINTNEXTLINE, variant isn't modified, try to avoid copy
-        const auto variant = Variant::fromScalar<T, type>(const_cast<T&>(value));
+        const auto variant = Variant::fromScalar<T>(const_cast<T&>(value));
         writeValue(variant);
+        return *this;
     }
 
-    /// Write array (raw) to variable node.
-    template <typename T, Type type = detail::guessType<T>()>
-    void writeArray(const T* array, size_t size) {
-        // NOLINTNEXTLINE, variant isn't modified, try to avoid copy
-        const auto variant = Variant::fromArray<T, type>(const_cast<T*>(array), size);
-        writeValue(variant);
+    /// @copydoc writeValueScalar
+    template <typename T>
+    [[deprecated("Use Node::writeValueScalar instead")]] Node& writeScalar(const T& value) {
+        return writeValueScalar<T>(value);
     }
 
-    /// Write array (std::vector) to variable node.
-    template <typename T, Type type = detail::guessType<T>()>
-    void writeArray(const std::vector<T>& array) {
-        writeArray<T, type>(array.data(), array.size());
+    /// Write array value to variable node.
+    /// @return Current node instance to chain multiple methods (fluent interface)
+    template <typename T>
+    Node& writeValueArray(Span<T> array) {
+        writeValue(Variant::fromArray(array));
+        return *this;
     }
 
-    /// Write range of elements as array to variable node.
-    template <typename InputIt, Type type = detail::guessTypeFromIterator<InputIt>()>
-    void writeArray(InputIt first, InputIt last) {
-        const auto variant = Variant::fromArray<InputIt, type>(first, last);
-        writeValue(variant);
+    /// @overload
+    template <typename ArrayLike>
+    Node& writeValueArray(ArrayLike&& array) {
+        return writeValueArray(Span{std::forward<ArrayLike>(array)});
     }
 
-    /// @copydoc services::writeDataType(T&, const NodeId&, Type)
-    void writeDataType(Type type) {
-        services::writeDataType(connection_, nodeId_, type);
+    /// Write range of elements as array value to variable node.
+    /// @return Current node instance to chain multiple methods (fluent interface)
+    template <typename InputIt>
+    Node& writeValueArray(InputIt first, InputIt last) {
+        writeValue(Variant::fromArray(first, last));
+        return *this;
     }
 
-    /// @copydoc services::writeDataType(T&, const NodeId&, const NodeId&)
-    void writeDataType(const NodeId& typeId) {
+    /// @copydoc  writeValueArray
+    template <typename... Args>
+    [[deprecated("Use Node::writeValueArray instead")]] Node& writeArray(Args&&... args) {
+        return writeValueArray(std::forward<Args>(args)...);
+    }
+
+    /// @copydoc services::writeDataType
+    /// @return Current node instance to chain multiple methods (fluent interface)
+    Node& writeDataType(const NodeId& typeId) {
         services::writeDataType(connection_, nodeId_, typeId);
+        return *this;
+    }
+
+    /// @overload
+    /// Deduce the `typeId` from the template type.
+    /// @return Current node instance to chain multiple methods (fluent interface)
+    template <typename T>
+    Node& writeDataType() {
+        return writeDataType(asWrapper<NodeId>(detail::guessDataType<T>().typeId));
     }
 
     /// @copydoc services::writeValueRank
-    void writeValueRank(ValueRank valueRank) {
+    /// @return Current node instance to chain multiple methods (fluent interface)
+    Node& writeValueRank(ValueRank valueRank) {
         services::writeValueRank(connection_, nodeId_, valueRank);
+        return *this;
     }
 
     /// @copydoc services::writeArrayDimensions
-    void writeArrayDimensions(const std::vector<uint32_t>& dimensions) {
+    /// @return Current node instance to chain multiple methods (fluent interface)
+    Node& writeArrayDimensions(Span<const uint32_t> dimensions) {
         services::writeArrayDimensions(connection_, nodeId_, dimensions);
+        return *this;
     }
 
     /// @copydoc services::writeAccessLevel
-    void writeAccessLevel(uint8_t mask) {
+    /// @return Current node instance to chain multiple methods (fluent interface)
+    Node& writeAccessLevel(uint8_t mask) {
         services::writeAccessLevel(connection_, nodeId_, mask);
+        return *this;
     }
 
     /// @copydoc services::writeUserAccessLevel
-    void writeUserAccessLevel(uint8_t mask) {
+    /// @return Current node instance to chain multiple methods (fluent interface)
+    Node& writeUserAccessLevel(uint8_t mask) {
         services::writeUserAccessLevel(connection_, nodeId_, mask);
+        return *this;
     }
 
     /// @copydoc services::writeMinimumSamplingInterval
-    void writeMinimumSamplingInterval(double milliseconds) {
+    /// @return Current node instance to chain multiple methods (fluent interface)
+    Node& writeMinimumSamplingInterval(double milliseconds) {
         services::writeMinimumSamplingInterval(connection_, nodeId_, milliseconds);
+        return *this;
     }
 
+    /// Write the value of an object property.
+    /// @param propertyName Browse name of the property (variable node)
+    /// @param value New value
+    /// @return Current node instance to chain multiple methods (fluent interface)
+    Node& writeObjectProperty(const QualifiedName& propertyName, const Variant& value);
+
 private:
-    ServerOrClient connection_;
+    ServerOrClient& connection_;
     NodeId nodeId_;
 };
 
 /* ---------------------------------------------------------------------------------------------- */
 
 template <typename ServerOrClient>
-bool operator==(const Node<ServerOrClient>& left, const Node<ServerOrClient>& right) noexcept {
-    return (left.getConnection() == right.getConnection()) &&
-           (left.getNodeId() == right.getNodeId());
+bool operator==(const Node<ServerOrClient>& lhs, const Node<ServerOrClient>& rhs) noexcept {
+    return (lhs.getConnection() == rhs.getConnection()) && (lhs.getNodeId() == rhs.getNodeId());
 }
 
 template <typename ServerOrClient>
-bool operator!=(const Node<ServerOrClient>& left, const Node<ServerOrClient>& right) noexcept {
-    return !(left == right);
+bool operator!=(const Node<ServerOrClient>& lhs, const Node<ServerOrClient>& rhs) noexcept {
+    return !(lhs == rhs);
 }
 
 }  // namespace opcua
