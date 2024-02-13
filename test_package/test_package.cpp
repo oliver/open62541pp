@@ -19,13 +19,13 @@ int main() {
     auto myIntegerNode = parentNode.addVariable(myIntegerNodeId, myIntegerName);
 
     // set node attributes
-    myIntegerNode.writeDataType(opcua::Type::Int32);
+    myIntegerNode.writeDataType(opcua::DataTypeId::Int32);
     myIntegerNode.writeDisplayName({"en-US", "the answer"});
     myIntegerNode.writeDescription({"en-US", "the answer"});
 
     // write value
-    myIntegerNode.writeScalar(42);
+    myIntegerNode.writeValueScalar(42);
 
     // read value
-    std::cout << "The answer is: " << myIntegerNode.readScalar<int>() << std::endl;
+    std::cout << "The answer is: " << myIntegerNode.readValueScalar<int>() << std::endl;
 }
