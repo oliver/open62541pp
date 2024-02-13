@@ -1,6 +1,9 @@
 name: Package
 
-on: [push, pull_request]
+on:
+  push:
+    branches: [master]
+  pull_request:
 
 jobs:
   cmake:
@@ -14,7 +17,7 @@ jobs:
     env:
       CMAKE_GENERATOR: Ninja
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: recursive
       - uses: aminya/setup-cpp@v1

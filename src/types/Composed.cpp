@@ -1,25 +1,55 @@
 #include "open62541pp/types/Composed.h"
 
 #include <algorithm>
+#include <cassert>
 #include <cstddef>
+#include <string_view>
+#include <type_traits>
 
 #include "open62541pp/ErrorHandling.h"
+#include "open62541pp/TypeWrapper.h"
+#include "open62541pp/detail/helper.h"
 
 #include "../open62541_impl.h"
 
 namespace opcua {
 
+template <typename T, typename = std::enable_if_t<std::is_trivially_copyable_v<T>>>
+inline static void assign(T src, T& dst) noexcept {
+    dst = src;
+}
+
+template <typename T, typename Native, typename = std::enable_if_t<std::is_enum_v<T>>>
+inline static void assign(T src, Native& dst) noexcept {
+    dst = static_cast<Native>(src);
+}
+
 template <typename T, typename Native>
-static void copyArray(Span<const T> src, Native** dst, size_t& dstSize) {
+inline static void assign(Bitmask<T> src, Native& dst) noexcept {
+    dst = src.get();
+}
+
+inline static void assign(std::string_view src, UA_String& dst) {
+    // UA_String is empty in constructor call, no clear necessary
+    assert(dst.data == nullptr);
+    dst = detail::allocNativeString(src);
+}
+
+template <typename T, typename Native, typename = std::enable_if_t<detail::isTypeWrapper<T>>>
+inline static void assign(T&& src, Native& dst) {
+    static_assert(std::is_same_v<typename T::NativeType, Native>);
+    asWrapper<T>(dst) = std::forward<T>(src);
+}
+
+template <typename T, typename Native>
+static void assignArray(Span<const T> src, Native*& dst, size_t& dstSize) {
     static_assert(sizeof(T) == sizeof(Native));
+    if constexpr (detail::isTypeWrapper<T>) {
+        dst = detail::copyArray(asNative(src.data()), src.size(), getDataType<T>());
+    } else {
+        dst = detail::copyArray(src.data(), src.size(), getDataType<T>());
+    }
     dstSize = src.size();
-    const auto status = UA_Array_copy(
-        src.data(),
-        src.size(),
-        (void**)dst,  // NOLINT
-        &detail::guessDataType<T>()
-    );
-    detail::throwOnBadStatus(status);
 }
 
 RequestHeader::RequestHeader(
@@ -31,13 +61,13 @@ RequestHeader::RequestHeader(
     uint32_t timeoutHint,
     ExtensionObject additionalHeader
 ) {
-    asWrapper<NodeId>(handle()->authenticationToken) = std::move(authenticationToken);
-    handle()->timestamp = timestamp;
-    handle()->requestHandle = requestHandle;
-    handle()->returnDiagnostics = returnDiagnostics;
-    asWrapper<String>(handle()->auditEntryId) = String(auditEntryId);
-    handle()->timeoutHint = timeoutHint;
-    asWrapper<ExtensionObject>(handle()->additionalHeader) = std::move(additionalHeader);
+    assign(std::move(authenticationToken), handle()->authenticationToken);
+    assign(std::move(timestamp), handle()->timestamp);
+    assign(requestHandle, handle()->requestHandle);
+    assign(returnDiagnostics, handle()->returnDiagnostics);
+    assign(auditEntryId, handle()->auditEntryId);
+    assign(timeoutHint, handle()->timeoutHint);
+    assign(std::move(additionalHeader), handle()->additionalHeader);
 }
 
 UserTokenPolicy::UserTokenPolicy(
@@ -47,11 +77,11 @@ UserTokenPolicy::UserTokenPolicy(
     std::string_view issuerEndpointUrl,
     std::string_view securityPolicyUri
 ) {
-    asWrapper<String>(handle()->policyId) = String(policyId);
-    handle()->tokenType = static_cast<UA_UserTokenType>(tokenType);
-    asWrapper<String>(handle()->issuedTokenType) = String(issuedTokenType);
-    asWrapper<String>(handle()->issuerEndpointUrl) = String(issuerEndpointUrl);
-    asWrapper<String>(handle()->securityPolicyUri) = String(securityPolicyUri);
+    assign(policyId, handle()->policyId);
+    assign(tokenType, handle()->tokenType);
+    assign(issuedTokenType, handle()->issuedTokenType);
+    assign(issuerEndpointUrl, handle()->issuerEndpointUrl);
+    assign(securityPolicyUri, handle()->securityPolicyUri);
 }
 
 ObjectAttributes::ObjectAttributes()
@@ -78,53 +108,178 @@ DataTypeAttributes::DataTypeAttributes()
 ViewAttributes::ViewAttributes()
     : TypeWrapperBase(UA_ViewAttributes_default) {}
 
+AddNodesItem::AddNodesItem(
+    ExpandedNodeId parentNodeId,
+    NodeId referenceTypeId,
+    ExpandedNodeId requestedNewNodeId,
+    QualifiedName browseName,
+    NodeClass nodeClass,
+    ExtensionObject nodeAttributes,
+    ExpandedNodeId typeDefinition
+) {
+    assign(std::move(parentNodeId), handle()->parentNodeId);
+    assign(std::move(referenceTypeId), handle()->referenceTypeId);
+    assign(std::move(requestedNewNodeId), handle()->requestedNewNodeId);
+    assign(std::move(browseName), handle()->browseName);
+    assign(nodeClass, handle()->nodeClass);
+    assign(std::move(nodeAttributes), handle()->nodeAttributes);
+    assign(std::move(typeDefinition), handle()->typeDefinition);
+}
+
+AddNodesRequest::AddNodesRequest(RequestHeader requestHeader, Span<const AddNodesItem> nodesToAdd) {
+    assign(std::move(requestHeader), handle()->requestHeader);
+    assignArray(nodesToAdd, handle()->nodesToAdd, handle()->nodesToAddSize);
+}
+
+AddReferencesItem::AddReferencesItem(
+    NodeId sourceNodeId,
+    NodeId referenceTypeId,
+    bool isForward,
+    std::string_view targetServerUri,
+    ExpandedNodeId targetNodeId,
+    NodeClass targetNodeClass
+) {
+    assign(std::move(sourceNodeId), handle()->sourceNodeId);
+    assign(std::move(referenceTypeId), handle()->referenceTypeId);
+    assign(isForward, handle()->isForward);
+    assign(targetServerUri, handle()->targetServerUri);
+    assign(std::move(targetNodeId), handle()->targetNodeId);
+    assign(targetNodeClass, handle()->targetNodeClass);
+}
+
+AddReferencesRequest::AddReferencesRequest(
+    RequestHeader requestHeader, Span<const AddReferencesItem> referencesToAdd
+) {
+    assign(std::move(requestHeader), handle()->requestHeader);
+    assignArray(referencesToAdd, handle()->referencesToAdd, handle()->referencesToAddSize);
+}
+
+DeleteNodesItem::DeleteNodesItem(NodeId nodeId, bool deleteTargetReferences) {
+    assign(std::move(nodeId), handle()->nodeId);
+    assign(deleteTargetReferences, handle()->deleteTargetReferences);
+}
+
+DeleteNodesRequest::DeleteNodesRequest(
+    RequestHeader requestHeader, Span<const DeleteNodesItem> nodesToDelete
+) {
+    assign(std::move(requestHeader), handle()->requestHeader);
+    assignArray(nodesToDelete, handle()->nodesToDelete, handle()->nodesToDeleteSize);
+}
+
+DeleteReferencesItem::DeleteReferencesItem(
+    NodeId sourceNodeId,
+    NodeId referenceTypeId,
+    bool isForward,
+    ExpandedNodeId targetNodeId,
+    bool deleteBidirectional
+) {
+    assign(std::move(sourceNodeId), handle()->sourceNodeId);
+    assign(std::move(referenceTypeId), handle()->referenceTypeId);
+    assign(isForward, handle()->isForward);
+    assign(std::move(targetNodeId), handle()->targetNodeId);
+    assign(deleteBidirectional, handle()->deleteBidirectional);
+}
+
+DeleteReferencesRequest::DeleteReferencesRequest(
+    RequestHeader requestHeader, Span<const DeleteReferencesItem> referencesToDelete
+) {
+    assign(std::move(requestHeader), handle()->requestHeader);
+    assignArray(referencesToDelete, handle()->referencesToDelete, handle()->referencesToDeleteSize);
+}
+
+ViewDescription::ViewDescription(NodeId viewId, DateTime timestamp, uint32_t viewVersion) {
+    assign(std::move(viewId), handle()->viewId);
+    assign(std::move(timestamp), handle()->timestamp);
+    assign(viewVersion, handle()->viewVersion);
+}
+
 BrowseDescription::BrowseDescription(
     NodeId nodeId,
     BrowseDirection browseDirection,
-    NodeId referenceType,
+    NodeId referenceTypeId,
     bool includeSubtypes,
-    uint32_t nodeClassMask,
-    uint32_t resultMask
+    Bitmask<NodeClass> nodeClassMask,
+    Bitmask<BrowseResultMask> resultMask
 ) {
-    asWrapper<NodeId>(handle()->nodeId) = std::move(nodeId);
-    handle()->browseDirection = static_cast<UA_BrowseDirection>(browseDirection);
-    asWrapper<NodeId>(handle()->referenceTypeId) = std::move(referenceType);
-    handle()->includeSubtypes = includeSubtypes;
-    handle()->nodeClassMask = nodeClassMask;
-    handle()->resultMask = resultMask;
+    assign(std::move(nodeId), handle()->nodeId);
+    assign(browseDirection, handle()->browseDirection);
+    assign(std::move(referenceTypeId), handle()->referenceTypeId);
+    assign(includeSubtypes, handle()->includeSubtypes);
+    assign(nodeClassMask, handle()->nodeClassMask);
+    assign(resultMask, handle()->resultMask);
 }
 
 RelativePathElement::RelativePathElement(
-    NodeId referenceType, bool isInverse, bool includeSubtypes, QualifiedName targetName
+    NodeId referenceTypeId, bool isInverse, bool includeSubtypes, QualifiedName targetName
 ) {
-    asWrapper<NodeId>(handle()->referenceTypeId) = std::move(referenceType);
-    handle()->isInverse = isInverse;
-    handle()->includeSubtypes = includeSubtypes;
-    asWrapper<QualifiedName>(handle()->targetName) = std::move(targetName);
+    assign(std::move(referenceTypeId), handle()->referenceTypeId);
+    assign(isInverse, handle()->isInverse);
+    assign(includeSubtypes, handle()->includeSubtypes);
+    assign(std::move(targetName), handle()->targetName);
 }
 
-RelativePath::RelativePath(std::initializer_list<RelativePathElement> elements) {
-    handle()->elementsSize = elements.size();
-    handle()->elements = detail::toNativeArrayAlloc(elements.begin(), elements.end());
-}
+RelativePath::RelativePath(std::initializer_list<RelativePathElement> elements)
+    : RelativePath({elements.begin(), elements.size()}) {}
 
 RelativePath::RelativePath(Span<const RelativePathElement> elements) {
-    handle()->elementsSize = elements.size();
-    handle()->elements = detail::toNativeArrayAlloc(elements.begin(), elements.end());
+    assignArray(elements, handle()->elements, handle()->elementsSize);
 }
 
 BrowsePath::BrowsePath(NodeId startingNode, RelativePath relativePath) {
-    asWrapper<NodeId>(handle()->startingNode) = std::move(startingNode);
-    asWrapper<RelativePath>(handle()->relativePath) = std::move(relativePath);
+    assign(std::move(startingNode), handle()->startingNode);
+    assign(std::move(relativePath), handle()->relativePath);
+}
+
+BrowseRequest::BrowseRequest(
+    RequestHeader requestHeader,
+    ViewDescription view,
+    uint32_t requestedMaxReferencesPerNode,
+    Span<const BrowseDescription> nodesToBrowse
+) {
+    assign(std::move(requestHeader), handle()->requestHeader);
+    assign(std::move(view), handle()->view);
+    assign(requestedMaxReferencesPerNode, handle()->requestedMaxReferencesPerNode);
+    assignArray(nodesToBrowse, handle()->nodesToBrowse, handle()->nodesToBrowseSize);
+}
+
+BrowseNextRequest::BrowseNextRequest(
+    RequestHeader requestHeader,
+    bool releaseContinuationPoints,
+    Span<const ByteString> continuationPoints
+) {
+    assign(std::move(requestHeader), handle()->requestHeader);
+    assign(releaseContinuationPoints, handle()->releaseContinuationPoints);
+    assignArray(continuationPoints, handle()->continuationPoints, handle()->continuationPointsSize);
+}
+
+TranslateBrowsePathsToNodeIdsRequest::TranslateBrowsePathsToNodeIdsRequest(
+    RequestHeader requestHeader, Span<const BrowsePath> browsePaths
+) {
+    assign(std::move(requestHeader), handle()->requestHeader);
+    assignArray(browsePaths, handle()->browsePaths, handle()->browsePathsSize);
+}
+
+RegisterNodesRequest::RegisterNodesRequest(
+    RequestHeader requestHeader, Span<const NodeId> nodesToRegister
+) {
+    assign(std::move(requestHeader), handle()->requestHeader);
+    assignArray(nodesToRegister, handle()->nodesToRegister, handle()->nodesToRegisterSize);
+}
+
+UnregisterNodesRequest::UnregisterNodesRequest(
+    RequestHeader requestHeader, Span<const NodeId> nodesToUnregister
+) {
+    assign(std::move(requestHeader), handle()->requestHeader);
+    assignArray(nodesToUnregister, handle()->nodesToUnregister, handle()->nodesToUnregisterSize);
 }
 
 ReadValueId::ReadValueId(
     NodeId nodeId, AttributeId attributeId, std::string_view indexRange, QualifiedName dataEncoding
 ) {
-    asWrapper<NodeId>(handle()->nodeId) = std::move(nodeId);
-    handle()->attributeId = static_cast<uint32_t>(attributeId);
-    asWrapper<String>(handle()->indexRange) = String(indexRange);
-    asWrapper<QualifiedName>(handle()->dataEncoding) = std::move(dataEncoding);
+    assign(std::move(nodeId), handle()->nodeId);
+    assign(attributeId, handle()->attributeId);
+    assign(indexRange, handle()->indexRange);
+    assign(std::move(dataEncoding), handle()->dataEncoding);
 }
 
 ReadRequest::ReadRequest(
@@ -133,24 +288,30 @@ ReadRequest::ReadRequest(
     TimestampsToReturn timestampsToReturn,
     Span<const ReadValueId> nodesToRead
 ) {
-    asWrapper<RequestHeader>(handle()->requestHeader) = std::move(requestHeader);
-    handle()->maxAge = maxAge;
-    handle()->timestampsToReturn = static_cast<UA_TimestampsToReturn>(timestampsToReturn);
-    copyArray(nodesToRead, &handle()->nodesToRead, handle()->nodesToReadSize);
+    assign(std::move(requestHeader), handle()->requestHeader);
+    assign(maxAge, handle()->maxAge);
+    assign(timestampsToReturn, handle()->timestampsToReturn);
+    assignArray(nodesToRead, handle()->nodesToRead, handle()->nodesToReadSize);
 }
 
 WriteValue::WriteValue(
     NodeId nodeId, AttributeId attributeId, std::string_view indexRange, DataValue value
 ) {
-    asWrapper<NodeId>(handle()->nodeId) = std::move(nodeId);
-    handle()->attributeId = static_cast<uint32_t>(attributeId);
-    asWrapper<String>(handle()->indexRange) = String(indexRange);
-    asWrapper<DataValue>(handle()->value) = std::move(value);
+    assign(std::move(nodeId), handle()->nodeId);
+    assign(attributeId, handle()->attributeId);
+    assign(indexRange, handle()->indexRange);
+    assign(std::move(value), handle()->value);
 }
 
 WriteRequest::WriteRequest(RequestHeader requestHeader, Span<const WriteValue> nodesToWrite) {
-    asWrapper<RequestHeader>(handle()->requestHeader) = std::move(requestHeader);
-    copyArray(nodesToWrite, &handle()->nodesToWrite, handle()->nodesToWriteSize);
+    assign(std::move(requestHeader), handle()->requestHeader);
+    assignArray(nodesToWrite, handle()->nodesToWrite, handle()->nodesToWriteSize);
+}
+
+EnumValueType::EnumValueType(int64_t value, LocalizedText displayName, LocalizedText description) {
+    assign(value, handle()->value);
+    assign(std::move(displayName), handle()->displayName);
+    assign(std::move(description), handle()->description);
 }
 
 #ifdef UA_ENABLE_METHODCALLS
@@ -162,11 +323,11 @@ Argument::Argument(
     ValueRank valueRank,
     Span<const uint32_t> arrayDimensions
 ) {
-    asWrapper<String>(handle()->name) = String(name);
-    asWrapper<LocalizedText>(handle()->description) = std::move(description);
-    asWrapper<NodeId>(handle()->dataType) = std::move(dataType);
-    handle()->valueRank = static_cast<UA_Int32>(valueRank);
-    copyArray(arrayDimensions, &handle()->arrayDimensions, handle()->arrayDimensionsSize);
+    assign(name, handle()->name);
+    assign(std::move(description), handle()->description);
+    assign(std::move(dataType), handle()->dataType);
+    assign(valueRank, handle()->valueRank);
+    assignArray(arrayDimensions, handle()->arrayDimensions, handle()->arrayDimensionsSize);
 }
 
 #endif
@@ -174,11 +335,11 @@ Argument::Argument(
 #ifdef UA_ENABLE_SUBSCRIPTIONS
 
 ElementOperand::ElementOperand(uint32_t index) {
-    handle()->index = index;
+    assign(index, handle()->index);
 }
 
 LiteralOperand::LiteralOperand(Variant value) {
-    asWrapper<Variant>(handle()->value) = std::move(value);
+    assign(std::move(value), handle()->value);
 }
 
 AttributeOperand::AttributeOperand(
@@ -188,11 +349,11 @@ AttributeOperand::AttributeOperand(
     AttributeId attributeId,
     [[maybe_unused]] std::string_view indexRange
 ) {
-    asWrapper<NodeId>(handle()->nodeId) = std::move(nodeId);
-    asWrapper<String>(handle()->alias) = String(alias);
-    asWrapper<RelativePath>(handle()->browsePath) = std::move(browsePath);
-    handle()->attributeId = static_cast<uint32_t>(attributeId);
-    asWrapper<String>(handle()->indexRange) = String(indexRange);
+    assign(std::move(nodeId), handle()->nodeId);
+    assign(alias, handle()->alias);
+    assign(std::move(browsePath), handle()->browsePath);
+    assign(attributeId, handle()->attributeId);
+    assign(indexRange, handle()->indexRange);
 }
 
 SimpleAttributeOperand::SimpleAttributeOperand(
@@ -201,19 +362,19 @@ SimpleAttributeOperand::SimpleAttributeOperand(
     AttributeId attributeId,
     [[maybe_unused]] std::string_view indexRange
 ) {
-    asWrapper<NodeId>(handle()->typeDefinitionId) = std::move(typeDefinitionId);
-    copyArray(browsePath, &handle()->browsePath, handle()->browsePathSize);
-    handle()->attributeId = static_cast<uint32_t>(attributeId);
-    asWrapper<String>(handle()->indexRange) = String(indexRange);
+    assign(std::move(typeDefinitionId), handle()->typeDefinitionId);
+    assignArray(browsePath, handle()->browsePath, handle()->browsePathSize);
+    assign(attributeId, handle()->attributeId);
+    assign(indexRange, handle()->indexRange);
 }
 
 ContentFilterElement::ContentFilterElement(
     FilterOperator filterOperator, Span<const FilterOperand> operands
 ) {
-    handle()->filterOperator = static_cast<UA_FilterOperator>(filterOperator);
+    assign(filterOperator, handle()->filterOperator);
     handle()->filterOperandsSize = operands.size();
-    handle()->filterOperands = static_cast<UA_ExtensionObject*>(
-        UA_Array_new(operands.size(), &UA_TYPES[UA_TYPES_EXTENSIONOBJECT])
+    handle()->filterOperands = detail::allocateArray<UA_ExtensionObject>(
+        operands.size(), UA_TYPES[UA_TYPES_EXTENSIONOBJECT]
     );
 
     // transform array of operand variants to array of extension objects
@@ -233,7 +394,7 @@ ContentFilter::ContentFilter(std::initializer_list<ContentFilterElement> element
     : ContentFilter(Span<const ContentFilterElement>(elements)) {}
 
 ContentFilter::ContentFilter(Span<const ContentFilterElement> elements) {
-    copyArray(elements, &handle()->elements, handle()->elementsSize);
+    assignArray(elements, handle()->elements, handle()->elementsSize);
 }
 
 /* ----------------------------------- ContentFilter operators ---------------------------------- */
@@ -248,9 +409,10 @@ static ContentFilter concatFilterElements(
 
     ContentFilter result;
     result->elementsSize = totalSize;
-    result->elements = static_cast<UA_ContentFilterElement*>(
-        UA_Array_new(totalSize, &UA_TYPES[UA_TYPES_CONTENTFILTERELEMENT])
+    result->elements = detail::allocateArray<UA_ContentFilterElement>(
+        totalSize, UA_TYPES[UA_TYPES_CONTENTFILTERELEMENT]
     );
+
     Span<ContentFilterElement> resultElements(
         asWrapper<ContentFilterElement>(result->elements), totalSize
     );
@@ -347,16 +509,16 @@ ContentFilter operator||(const ContentFilter& lhs, const ContentFilter& rhs) {
 DataChangeFilter::DataChangeFilter(
     DataChangeTrigger trigger, DeadbandType deadbandType, double deadbandValue
 ) {
-    handle()->trigger = static_cast<UA_DataChangeTrigger>(trigger);
-    handle()->deadbandType = static_cast<UA_DeadbandType>(deadbandType);
-    handle()->deadbandValue = deadbandValue;
+    assign(trigger, handle()->trigger);
+    assign(deadbandType, handle()->deadbandType);
+    assign(deadbandValue, handle()->deadbandValue);
 }
 
 EventFilter::EventFilter(
     Span<const SimpleAttributeOperand> selectClauses, ContentFilter whereClause
 ) {
-    copyArray(selectClauses, &handle()->selectClauses, handle()->selectClausesSize);
-    asWrapper<ContentFilter>(handle()->whereClause) = std::move(whereClause);
+    assignArray(selectClauses, handle()->selectClauses, handle()->selectClausesSize);
+    assign(std::move(whereClause), handle()->whereClause);
 }
 
 AggregateFilter::AggregateFilter(
@@ -365,10 +527,10 @@ AggregateFilter::AggregateFilter(
     double processingInterval,
     AggregateConfiguration aggregateConfiguration
 ) {
-    handle()->startTime = startTime;
-    asWrapper<NodeId>(handle()->aggregateType) = std::move(aggregateType);
-    handle()->processingInterval = processingInterval;
-    handle()->aggregateConfiguration = aggregateConfiguration;
+    assign(std::move(startTime), handle()->startTime);
+    assign(std::move(aggregateType), handle()->aggregateType);
+    assign(processingInterval, handle()->processingInterval);
+    assign(aggregateConfiguration, handle()->aggregateConfiguration);  // TODO: make wrapper?
 }
 
 #endif

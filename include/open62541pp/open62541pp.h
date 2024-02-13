@@ -1,6 +1,7 @@
 #pragma once
 
 #include "open62541pp/AccessControl.h"
+#include "open62541pp/Bitmask.h"
 #include "open62541pp/Client.h"
 #include "open62541pp/Common.h"
 #include "open62541pp/Config.h"
@@ -18,7 +19,8 @@
 #include "open62541pp/Span.h"
 #include "open62541pp/Subscription.h"
 #include "open62541pp/TypeConverter.h"
-#include "open62541pp/TypeConverterNative.h"
+#include "open62541pp/TypeRegistry.h"
+#include "open62541pp/TypeRegistryNative.h"
 #include "open62541pp/TypeWrapper.h"
 #include "open62541pp/ValueBackend.h"
 #include "open62541pp/detail/helper.h"

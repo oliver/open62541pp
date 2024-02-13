@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <cstddef>
+#include <iterator>
 #include <string>
 #include <utility>  // move
 
@@ -10,7 +11,6 @@
 #include "open62541pp/DataType.h"
 #include "open62541pp/ErrorHandling.h"
 #include "open62541pp/Node.h"
-#include "open62541pp/TypeConverter.h"
 #include "open62541pp/TypeWrapper.h"
 #include "open62541pp/open62541.h"
 #include "open62541pp/services/Attribute.h"  // readValue
@@ -73,7 +73,7 @@ inline static void invokeStateCallback(ClientContext& context, ClientState state
     const auto& callbackArray = context.stateCallbacks;
     const auto& callback = callbackArray.at(static_cast<size_t>(state));
     if (callback) {
-        detail::invokeCatchIgnore(callback);
+        detail::getExceptionCatcher(context).invoke(callback);
     }
 }
 
@@ -170,7 +170,8 @@ public:
 
     void runIterate(uint16_t timeoutMilliseconds) {
         const auto status = UA_Client_run_iterate(handle(), timeoutMilliseconds);
-        detail::throwOnBadStatus(status);
+        throwIfBad(status);
+        detail::getExceptionCatcher(getContext()).rethrow();
     }
 
     void run() {
@@ -181,6 +182,7 @@ public:
         try {
             while (running_) {
                 runIterate(1000);
+                detail::getExceptionCatcher(getContext()).rethrow();
             }
         } catch (...) {
             running_ = false;
@@ -222,10 +224,23 @@ private:
 
 /* ------------------------------------------- Client ------------------------------------------- */
 
-Client::Client()
+Client::Client(Logger logger)
     : connection_(std::make_shared<Connection>()) {
-    const auto status = UA_ClientConfig_setDefault(getConfig(this));
-    detail::throwOnBadStatus(status);
+    // The logger should be set as soon as possible, ideally even before UA_ClientConfig_setDefault.
+    // However, the logger gets overwritten by UA_ClientConfig_setDefault() in older versions of
+    // open62541. The best we can do in this case, is to first call UA_ClientConfig_setDefault and
+    // then setLogger.
+    auto setConfig = [&] {
+        const auto status = UA_ClientConfig_setDefault(getConfig(this));
+        throwIfBad(status);
+    };
+#if UAPP_OPEN62541_VER_GE(1, 1)
+    setLogger(std::move(logger));
+    setConfig();
+#else
+    setConfig();
+    setLogger(std::move(logger));
+#endif
     getConfig(this)->securityMode = UA_MESSAGESECURITYMODE_NONE;
     connection_->applyDefaults();
 }
@@ -247,15 +262,15 @@ Client::Client(
         asNative(revocationList.data()),
         revocationList.size()
     );
-    detail::throwOnBadStatus(status);
+    throwIfBad(status);
     getConfig(this)->securityMode = UA_MESSAGESECURITYMODE_SIGNANDENCRYPT;
     connection_->applyDefaults();
 }
 #endif
 
 std::vector<ApplicationDescription> Client::findServers(std::string_view serverUrl) {
-    UA_ApplicationDescription* array = nullptr;
-    size_t arraySize = 0;
+    size_t arraySize{};
+    UA_ApplicationDescription* array{};
     const auto status = UA_Client_findServers(
         handle(),
         std::string(serverUrl).c_str(),  // serverUrl
@@ -266,24 +281,30 @@ std::vector<ApplicationDescription> Client::findServers(std::string_view serverU
         &arraySize,  // registeredServersSize
         &array  // registeredServers
     );
-    auto result = detail::fromNativeArray<ApplicationDescription>(array, arraySize);
+    std::vector<ApplicationDescription> result(
+        std::make_move_iterator(array),
+        std::make_move_iterator(array + arraySize)  // NOLINT
+    );
     UA_Array_delete(array, arraySize, &UA_TYPES[UA_TYPES_APPLICATIONDESCRIPTION]);
-    detail::throwOnBadStatus(status);
+    throwIfBad(status);
     return result;
 }
 
 std::vector<EndpointDescription> Client::getEndpoints(std::string_view serverUrl) {
-    UA_EndpointDescription* array = nullptr;
-    size_t arraySize = 0;
+    size_t arraySize{};
+    UA_EndpointDescription* array{};
     const auto status = UA_Client_getEndpoints(
         handle(),
         std::string(serverUrl).c_str(),  // serverUrl
         &arraySize,  // endpointDescriptionsSize,
         &array  // endpointDescriptions
     );
-    auto result = detail::fromNativeArray<EndpointDescription>(array, arraySize);
+    std::vector<EndpointDescription> result(
+        std::make_move_iterator(array),
+        std::make_move_iterator(array + arraySize)  // NOLINT
+    );
     UA_Array_delete(array, arraySize, &UA_TYPES[UA_TYPES_ENDPOINTDESCRIPTION]);
-    detail::throwOnBadStatus(status);
+    throwIfBad(status);
     return result;
 }
 
@@ -325,7 +346,7 @@ void Client::onSessionClosed(StateCallback callback) {
 
 void Client::connect(std::string_view endpointUrl) {
     const auto status = UA_Client_connect(handle(), std::string(endpointUrl).c_str());
-    detail::throwOnBadStatus(status);
+    throwIfBad(status);
 }
 
 void Client::connect(std::string_view endpointUrl, const Login& login) {
@@ -337,7 +358,7 @@ void Client::connect(std::string_view endpointUrl, const Login& login) {
     const auto status = func(
         handle(), std::string(endpointUrl).c_str(), login.username.c_str(), login.password.c_str()
     );
-    detail::throwOnBadStatus(status);
+    throwIfBad(status);
 }
 
 void Client::disconnect() noexcept {
@@ -397,8 +418,8 @@ bool Client::isRunning() const noexcept {
     return connection_->isRunning();
 }
 
-Node<Client> Client::getNode(const NodeId& id) {
-    return {*this, id};
+Node<Client> Client::getNode(NodeId id) {
+    return {*this, std::move(id)};
 }
 
 Node<Client> Client::getRootNode() {

@@ -13,8 +13,8 @@
 
 // forward declarations
 namespace opcua {
+class Client;
 class Variant;
-
 }  // namespace opcua
 
 namespace opcua::services {
@@ -22,16 +22,56 @@ namespace opcua::services {
 /**
  * @defgroup NodeManagement NodeManagement service set
  * Add/delete nodes and references.
+ *
+ * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/5.7
  * @ingroup Services
+ * @{
  */
+
+/**
+ * Add one or more nodes (client only).
+ */
+AddNodesResponse addNodes(Client& client, const AddNodesRequest& request);
+
+/**
+ * Add one or more references (client only).
+ */
+AddReferencesResponse addReferences(Client& client, const AddReferencesRequest& request);
+
+/**
+ * Delete one or more nodes (client only).
+ */
+DeleteNodesResponse deleteNodes(Client& client, const DeleteNodesRequest& request);
+
+/**
+ * Delete one or more references (client only).
+ */
+DeleteReferencesResponse deleteReferences(Client& client, const DeleteReferencesRequest& request);
+
+/**
+ * Add a node.
+ * @exception BadStatus
+ */
+template <typename T>
+NodeId addNode(
+    T& serverOrClient,
+    NodeClass nodeClass,
+    const NodeId& parentId,
+    const NodeId& id,
+    std::string_view browseName,
+    const ExtensionObject& nodeAttributes,
+    const NodeId& typeDefinition,
+    const NodeId& referenceType
+);
+
+/* ------------------------------- Specialized (inline) functions ------------------------------- */
 
 /**
  * Add object.
  * @exception BadStatus
- * @ingroup NodeManagement
  */
 template <typename T>
-NodeId addObject(
+inline NodeId addObject(
     T& serverOrClient,
     const NodeId& parentId,
     const NodeId& id,
@@ -39,12 +79,22 @@ NodeId addObject(
     const ObjectAttributes& attributes = {},
     const NodeId& objectType = ObjectTypeId::BaseObjectType,
     const NodeId& referenceType = ReferenceTypeId::HasComponent
-);
+) {
+    return addNode(
+        serverOrClient,
+        NodeClass::Object,
+        parentId,
+        id,
+        browseName,
+        ExtensionObject::fromDecoded(const_cast<ObjectAttributes&>(attributes)),  // NOLINT
+        objectType,
+        referenceType
+    );
+}
 
 /**
  * Add folder.
  * @exception BadStatus
- * @ingroup NodeManagement
  */
 template <typename T>
 inline NodeId addFolder(
@@ -69,10 +119,9 @@ inline NodeId addFolder(
 /**
  * Add variable.
  * @exception BadStatus
- * @ingroup NodeManagement
  */
 template <typename T>
-NodeId addVariable(
+inline NodeId addVariable(
     T& serverOrClient,
     const NodeId& parentId,
     const NodeId& id,
@@ -80,12 +129,22 @@ NodeId addVariable(
     const VariableAttributes& attributes = {},
     const NodeId& variableType = VariableTypeId::BaseDataVariableType,
     const NodeId& referenceType = ReferenceTypeId::HasComponent
-);
+) {
+    return addNode(
+        serverOrClient,
+        NodeClass::Variable,
+        parentId,
+        id,
+        browseName,
+        ExtensionObject::fromDecoded(const_cast<VariableAttributes&>(attributes)),  // NOLINT
+        variableType,
+        referenceType
+    );
+}
 
 /**
  * Add property.
  * @exception BadStatus
- * @ingroup NodeManagement
  */
 template <typename T>
 inline NodeId addProperty(
@@ -111,7 +170,6 @@ inline NodeId addProperty(
  * Method callback.
  * @param input Input parameters
  * @param output Output parameters
- * @ingroup NodeManagement
  */
 using MethodCallback = std::function<void(Span<const Variant> input, Span<Variant> output)>;
 
@@ -119,7 +177,6 @@ using MethodCallback = std::function<void(Span<const Variant> input, Span<Varian
  * Add method.
  * Callbacks can not be set by clients. Servers can assign callbacks to method nodes afterwards.
  * @exception BadStatus
- * @ingroup NodeManagement
  */
 template <typename T>
 NodeId addMethod(
@@ -138,25 +195,34 @@ NodeId addMethod(
 /**
  * Add object type.
  * @exception BadStatus
- * @ingroup NodeManagement
  */
 template <typename T>
-NodeId addObjectType(
+inline NodeId addObjectType(
     T& serverOrClient,
     const NodeId& parentId,
     const NodeId& id,
     std::string_view browseName,
     const ObjectTypeAttributes& attributes = {},
     const NodeId& referenceType = ReferenceTypeId::HasSubtype
-);
+) {
+    return addNode(
+        serverOrClient,
+        NodeClass::ObjectType,
+        parentId,
+        id,
+        browseName,
+        ExtensionObject::fromDecoded(const_cast<ObjectTypeAttributes&>(attributes)),  // NOLINT
+        {},
+        referenceType
+    );
+}
 
 /**
  * Add variable type.
  * @exception BadStatus
- * @ingroup NodeManagement
  */
 template <typename T>
-NodeId addVariableType(
+inline NodeId addVariableType(
     T& serverOrClient,
     const NodeId& parentId,
     const NodeId& id,
@@ -164,57 +230,97 @@ NodeId addVariableType(
     const VariableTypeAttributes& attributes = {},
     const NodeId& variableType = VariableTypeId::BaseDataVariableType,
     const NodeId& referenceType = ReferenceTypeId::HasSubtype
-);
+) {
+    return addNode(
+        serverOrClient,
+        NodeClass::VariableType,
+        parentId,
+        id,
+        browseName,
+        ExtensionObject::fromDecoded(const_cast<VariableTypeAttributes&>(attributes)),  // NOLINT
+        variableType,
+        referenceType
+    );
+}
 
 /**
  * Add reference type.
  * @exception BadStatus
- * @ingroup NodeManagement
  */
 template <typename T>
-NodeId addReferenceType(
+inline NodeId addReferenceType(
     T& serverOrClient,
     const NodeId& parentId,
     const NodeId& id,
     std::string_view browseName,
     const ReferenceTypeAttributes& attributes = {},
     const NodeId& referenceType = ReferenceTypeId::HasSubtype
-);
+) {
+    return addNode(
+        serverOrClient,
+        NodeClass::ReferenceType,
+        parentId,
+        id,
+        browseName,
+        ExtensionObject::fromDecoded(const_cast<ReferenceTypeAttributes&>(attributes)),  // NOLINT
+        {},
+        referenceType
+    );
+}
 
 /**
  * Add data type.
  * @exception BadStatus
- * @ingroup NodeManagement
  */
 template <typename T>
-NodeId addDataType(
+inline NodeId addDataType(
     T& serverOrClient,
     const NodeId& parentId,
     const NodeId& id,
     std::string_view browseName,
     const DataTypeAttributes& attributes = {},
     const NodeId& referenceType = ReferenceTypeId::HasSubtype
-);
+) {
+    return addNode(
+        serverOrClient,
+        NodeClass::DataType,
+        parentId,
+        id,
+        browseName,
+        ExtensionObject::fromDecoded(const_cast<DataTypeAttributes&>(attributes)),  // NOLINT
+        {},
+        referenceType
+    );
+}
 
 /**
  * Add view.
  * @exception BadStatus
- * @ingroup NodeManagement
  */
 template <typename T>
-NodeId addView(
+inline NodeId addView(
     T& serverOrClient,
     const NodeId& parentId,
     const NodeId& id,
     std::string_view browseName,
     const ViewAttributes& attributes = {},
     const NodeId& referenceType = ReferenceTypeId::Organizes
-);
+) {
+    return addNode(
+        serverOrClient,
+        NodeClass::View,
+        parentId,
+        id,
+        browseName,
+        ExtensionObject::fromDecoded(const_cast<ViewAttributes&>(attributes)),  // NOLINT
+        {},
+        referenceType
+    );
+}
 
 /**
  * Add reference.
  * @exception BadStatus
- * @ingroup NodeManagement
  */
 template <typename T>
 void addReference(
@@ -228,7 +334,6 @@ void addReference(
 /**
  * Add modelling rule.
  * @exception BadStatus
- * @ingroup NodeManagement
  */
 template <typename T>
 inline void addModellingRule(T& serverOrClient, const NodeId& id, ModellingRule rule) {
@@ -244,7 +349,6 @@ inline void addModellingRule(T& serverOrClient, const NodeId& id, ModellingRule 
 /**
  * Delete node.
  * @exception BadStatus
- * @ingroup NodeManagement
  */
 template <typename T>
 void deleteNode(T& serverOrClient, const NodeId& id, bool deleteReferences = true);
@@ -252,7 +356,6 @@ void deleteNode(T& serverOrClient, const NodeId& id, bool deleteReferences = tru
 /**
  * Delete reference.
  * @exception BadStatus
- * @ingroup NodeManagement
  */
 template <typename T>
 void deleteReference(
@@ -263,5 +366,9 @@ void deleteReference(
     bool isForward,
     bool deleteBidirectional
 );
+
+/**
+ * @}
+ */
 
 }  // namespace opcua::services

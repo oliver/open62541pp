@@ -3,12 +3,12 @@
 #ifdef UA_ENABLE_METHODCALLS
 
 #include <cstddef>
+#include <iterator>
 
 #include "open62541pp/Client.h"
 #include "open62541pp/ErrorHandling.h"
 #include "open62541pp/Server.h"
 #include "open62541pp/TypeWrapper.h"
-#include "open62541pp/detail/helper.h"  // getUaDataType
 #include "open62541pp/types/NodeId.h"
 #include "open62541pp/types/Variant.h"
 
@@ -31,14 +31,14 @@ std::vector<Variant> call(
 
     using Result = TypeWrapper<UA_CallMethodResult, UA_TYPES_CALLMETHODRESULT>;
     const Result result = UA_Server_call(server.handle(), &request);
-    detail::throwOnBadStatus(result->statusCode);
+    throwIfBad(result->statusCode);
     for (size_t i = 0; i < result->inputArgumentResultsSize; ++i) {
-        detail::throwOnBadStatus(result->inputArgumentResults[i]);  // NOLINT
+        throwIfBad(result->inputArgumentResults[i]);  // NOLINT
     }
 
     return {
-        result->outputArguments,
-        result->outputArguments + result->outputArgumentsSize  // NOLINT
+        std::make_move_iterator(result->outputArguments),
+        std::make_move_iterator(result->outputArguments + result->outputArgumentsSize)  // NOLINT
     };
 }
 
@@ -60,9 +60,12 @@ std::vector<Variant> call(
         &outputSize,
         &output
     );
-    std::vector<Variant> result(output, output + outputSize);  // NOLINT
-    UA_Array_delete(output, outputSize, &detail::getUaDataType(UA_TYPES_VARIANT));
-    detail::throwOnBadStatus(status);
+    std::vector<Variant> result(
+        std::make_move_iterator(output),
+        std::make_move_iterator(output + outputSize)  // NOLINT
+    );
+    UA_Array_delete(output, outputSize, &UA_TYPES[UA_TYPES_VARIANT]);
+    throwIfBad(status);
     return result;
 }
 

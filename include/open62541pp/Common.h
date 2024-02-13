@@ -1,13 +1,15 @@
 #pragma once
 
 #include <cstdint>
-#include <string_view>
-#include <tuple>
+#include <type_traits>
 
-#include "open62541pp/detail/traits.h"
 #include "open62541pp/open62541.h"
 
 namespace opcua {
+
+// forward declare
+template <typename T>
+struct IsBitmaskEnum;
 
 /// Type index of the ::UA_TYPES array.
 using TypeIndex = uint16_t;
@@ -51,7 +53,7 @@ enum class Type : TypeIndex {
  * @see UA_AttributeId
  * @see https://reference.opcfoundation.org/Core/Part6/v105/docs/A.1/
  */
-enum class AttributeId : uint32_t {
+enum class AttributeId : int32_t {
     // clang-format off
     NodeId                  = 1,
     NodeClass               = 2,
@@ -84,11 +86,17 @@ enum class AttributeId : uint32_t {
 };
 
 /**
- * Node classes.
+ * Node class.
+ *
+ * The enum can be used as a bitmask and allows bitwise operations, e.g.:
+ * @code
+ * auto mask = NodeClass::Object | NodeClass::Variable;
+ * @endcode
+ *
  * @see UA_NodeClass
  * @see https://reference.opcfoundation.org/Core/Part3/v105/docs/8.29
  */
-enum class NodeClass : uint32_t {
+enum class NodeClass : int32_t {
     // clang-format off
     Unspecified   = 0,
     Object        = 1,
@@ -102,32 +110,77 @@ enum class NodeClass : uint32_t {
     // clang-format on
 };
 
-/// Get name of node class.
-constexpr std::string_view getNodeClassName(NodeClass nodeClass) {
-    switch (nodeClass) {
-    case NodeClass::Object:
-        return "Object";
-    case NodeClass::Variable:
-        return "Variable";
-    case NodeClass::Method:
-        return "Method";
-    case NodeClass::ObjectType:
-        return "ObjectType";
-    case NodeClass::VariableType:
-        return "VariableType";
-    case NodeClass::ReferenceType:
-        return "ReferenceType";
-    case NodeClass::DataType:
-        return "DataType";
-    case NodeClass::View:
-        return "View";
-    default:
-        return "Unknown";
-    }
-}
+template <>
+struct IsBitmaskEnum<NodeClass> : std::true_type {};
+
+/**
+ * Access level.
+ * Indicates how the value of an variable can be accessed (read/write) and if it contains current
+ * and/or historic data.
+ * @see https://reference.opcfoundation.org/Core/Part3/v104/docs/8.57
+ */
+enum class AccessLevel : uint8_t {
+    // clang-format off
+    None           = 0U,
+    CurrentRead    = 1U << 0U,
+    CurrentWrite   = 1U << 1U,
+    HistoryRead    = 1U << 2U,
+    HistoryWrite   = 1U << 3U,
+    SemanticChange = 1U << 4U,
+    StatusWrite    = 1U << 5U,
+    TimestampWrite = 1U << 6U,
+    // clang-format on
+};
+
+template <>
+struct IsBitmaskEnum<AccessLevel> : std::true_type {};
+
+/**
+ * Write mask.
+ * Indicates which attributes of a node a writeable.
+ * @see https://reference.opcfoundation.org/Core/Part3/v105/docs/5.2.7
+ * @see https://reference.opcfoundation.org/Core/Part3/v105/docs/8.60
+ */
+enum class WriteMask : uint32_t {
+    // clang-format off
+    None                    = 0U,
+    AccessLevel             = 1U << 0U,
+    ArrayDimensions         = 1U << 1U,
+    BrowseName              = 1U << 2U,
+    ContainsNoLoops         = 1U << 3U,
+    DataType                = 1U << 4U,
+    Description             = 1U << 5U,
+    DisplayName             = 1U << 6U,
+    EventNotifier           = 1U << 7U,
+    Executable              = 1U << 8U,
+    Historizing             = 1U << 9U,
+    InverseName             = 1U << 10U,
+    IsAbstract              = 1U << 11U,
+    MinimumSamplingInterval = 1U << 12U,
+    NodeClass               = 1U << 13U,
+    NodeId                  = 1U << 14U,
+    Symmetric               = 1U << 15U,
+    UserAccessLevel         = 1U << 16U,
+    UserExecutable          = 1U << 17U,
+    UserWriteMask           = 1U << 18U,
+    ValueRank               = 1U << 19U,
+    WriteMask               = 1U << 20U,
+    ValueForVariableType    = 1U << 21U,
+    DataTypeDefinition      = 1U << 22U,
+    RolePermissions         = 1U << 23U,
+    AccessRestrictions      = 1U << 24U,
+    AccessLevelEx           = 1U << 25U,
+    // clang-format on
+};
+
+template <>
+struct IsBitmaskEnum<WriteMask> : std::true_type {};
 
 /**
  * Value rank.
+ * Indicates whether the value attribute of the variable is an array and how many dimensions the
+ * array has.
+ * @see https://reference.opcfoundation.org/Core/Part3/v105/docs/5.6.2
  */
 enum class ValueRank : int32_t {
     // clang-format off
@@ -140,6 +193,23 @@ enum class ValueRank : int32_t {
     ThreeDimensions      = UA_VALUERANK_THREE_DIMENSIONS,
     // clang-format on
 };
+
+/**
+ * Event notifier.
+ * Indicates if a node can be used to subscribe to events or read/write historic events.
+ * @see https://reference.opcfoundation.org/Core/Part3/v105/docs/8.59
+ */
+enum class EventNotifier : uint8_t {
+    // clang-format off
+    None              = 0,
+    SubscribeToEvents = 1,
+    HistoryRead       = 4,
+    HistoryWrite      = 8,
+    // clang-format on
+};
+
+template <>
+struct IsBitmaskEnum<EventNotifier> : std::true_type {};
 
 /**
  * Modelling rules.
@@ -161,7 +231,7 @@ enum class ModellingRule : uint16_t {
  * @see UA_BrowseDirection
  * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/7.5
  */
-enum class BrowseDirection : uint32_t {
+enum class BrowseDirection : int32_t {
     // clang-format off
     Forward = 0,
     Inverse = 1,
@@ -175,7 +245,7 @@ enum class BrowseDirection : uint32_t {
  * @see UA_TimestampsToReturn
  * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/7.40
  */
-enum class TimestampsToReturn : uint32_t {
+enum class TimestampsToReturn : int32_t {
     // clang-format off
     Source   = 0,
     Server   = 1,
@@ -190,7 +260,7 @@ enum class TimestampsToReturn : uint32_t {
  * @see UA_MonitoringMode
  * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/7.23
  */
-enum class MonitoringMode : uint32_t {
+enum class MonitoringMode : int32_t {
     // clang-format off
     Disabled  = 0,
     Sampling  = 1,
@@ -203,7 +273,7 @@ enum class MonitoringMode : uint32_t {
  * @see UA_MessageSecurityMode
  * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/7.20
  */
-enum class MessageSecurityMode : uint32_t {
+enum class MessageSecurityMode : int32_t {
     // clang-format off
     Invalid        = 0,  ///< Will always be rejected
     None           = 1,  ///< No security applied
@@ -211,46 +281,5 @@ enum class MessageSecurityMode : uint32_t {
     SignAndEncrypt = 3,  ///< All messages are signed and encrypted
     // clang-format on
 };
-
-namespace detail {
-
-using BuiltinTypes = std::tuple<
-    UA_Boolean,
-    UA_SByte,
-    UA_Byte,
-    UA_Int16,
-    UA_UInt16,
-    UA_Int32,
-    UA_UInt32,
-    UA_Int64,
-    UA_UInt64,
-    UA_Float,
-    UA_Double,
-    UA_String,
-    UA_DateTime,
-    UA_Guid,
-    UA_ByteString,
-    UA_XmlElement,
-    UA_NodeId,
-    UA_ExpandedNodeId,
-    UA_StatusCode,
-    UA_QualifiedName,
-    UA_LocalizedText,
-    UA_ExtensionObject,
-    UA_DataValue,
-    UA_Variant,
-    UA_DiagnosticInfo>;
-
-template <typename T>
-constexpr bool isBuiltinType() {
-    return TupleHolds<BuiltinTypes, T>::value;
-}
-
-// template <size_t Index>
-// using BuiltinType = std::tuple_element<Index, BuiltinTypes>;
-
-inline constexpr auto builtinTypesCount = std::tuple_size_v<BuiltinTypes>;
-
-}  // namespace detail
 
 }  // namespace opcua

@@ -4,11 +4,13 @@ add_executable(
     open62541pp_tests
     main.cpp
     AccessControl.cpp
+    Bitmask.cpp
     Client.cpp
     Crypto.cpp
     CustomAccessControl.cpp
     CustomDataTypes.cpp
     DataType.cpp
+    ExceptionCatcher.cpp
     ErrorHandling.cpp
     Event.cpp
     helper.cpp
@@ -19,7 +21,9 @@ add_executable(
     Session.cpp
     Span.cpp
     Subscription_MonitoredItem.cpp
+    traits.cpp
     TypeConverter.cpp
+    TypeRegistry.cpp
     Types.cpp
     TypeWrapper.cpp
 )

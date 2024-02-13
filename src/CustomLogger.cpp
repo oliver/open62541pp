@@ -44,6 +44,14 @@ CustomLogger::CustomLogger(UA_Logger& logger)
     : nativeLogger_(logger) {}
 
 void CustomLogger::setLogger(Logger logger) {
+    if (!logger) {
+        return;
+    }
+
+    if (nativeLogger_.clear != nullptr) {
+        nativeLogger_.clear(nativeLogger_.context);
+        nativeLogger_.context = nullptr;
+    }
     logger_ = std::move(logger);
     nativeLogger_.log = log;
     nativeLogger_.context = this;

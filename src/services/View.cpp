@@ -8,17 +8,22 @@
 #include "open62541pp/NodeIds.h"
 #include "open62541pp/Server.h"
 #include "open62541pp/TypeWrapper.h"
-#include "open62541pp/detail/helper.h"  // getUaDataType
 #include "open62541pp/types/Builtin.h"
 
 #include "../open62541_impl.h"
 
 namespace opcua::services {
 
+BrowseResponse browse(Client& client, const BrowseRequest& request) {
+    BrowseResponse response = UA_Client_Service_browse(client.handle(), request);
+    throwIfBad(response->responseHeader.serviceResult);
+    return response;
+}
+
 template <>
 BrowseResult browse<Server>(Server& server, const BrowseDescription& bd, uint32_t maxReferences) {
     BrowseResult result = UA_Server_browse(server.handle(), maxReferences, bd.handle());
-    detail::throwOnBadStatus(result->statusCode);
+    throwIfBad(result->statusCode);
     return result;
 }
 
@@ -27,12 +32,9 @@ BrowseResult browse<Client>(Client& client, const BrowseDescription& bd, uint32_
     UA_BrowseRequest request{};
     request.requestedMaxReferencesPerNode = maxReferences;
     request.nodesToBrowseSize = 1;
-    // NOLINTNEXTLINE, won't be modified
-    request.nodesToBrowse = const_cast<UA_BrowseDescription*>(bd.handle());
+    request.nodesToBrowse = const_cast<UA_BrowseDescription*>(bd.handle());  // NOLINT
 
-    using Response = TypeWrapper<UA_BrowseResponse, UA_TYPES_BROWSERESPONSE>;
-    Response response = UA_Client_Service_browse(client.handle(), request);
-    detail::throwOnBadStatus(response->responseHeader.serviceResult);
+    auto response = browse(client, asWrapper<BrowseRequest>(request));
     if (response->resultsSize != 1) {
         throw BadStatus(UA_STATUSCODE_BADUNEXPECTEDERROR);
     }
@@ -42,6 +44,12 @@ BrowseResult browse<Client>(Client& client, const BrowseDescription& bd, uint32_
     return result;
 }
 
+BrowseNextResponse browseNext(Client& client, const BrowseNextRequest& request) {
+    BrowseNextResponse response = UA_Client_Service_browseNext(client.handle(), request);
+    throwIfBad(response->responseHeader.serviceResult);
+    return response;
+}
+
 template <>
 BrowseResult browseNext<Server>(
     Server& server, bool releaseContinuationPoint, const ByteString& continuationPoint
@@ -49,7 +57,7 @@ BrowseResult browseNext<Server>(
     BrowseResult result = UA_Server_browseNext(
         server.handle(), releaseContinuationPoint, continuationPoint.handle()
     );
-    detail::throwOnBadStatus(result->statusCode);
+    throwIfBad(result->statusCode);
     return result;
 }
 
@@ -60,12 +68,9 @@ BrowseResult browseNext<Client>(
     UA_BrowseNextRequest request{};
     request.releaseContinuationPoints = releaseContinuationPoint;
     request.continuationPointsSize = 1;
-    // NOLINTNEXTLINE, won't be modified
-    request.continuationPoints = const_cast<UA_ByteString*>(continuationPoint.handle());
+    request.continuationPoints = const_cast<UA_ByteString*>(continuationPoint.handle());  // NOLINT
 
-    using Response = TypeWrapper<UA_BrowseNextResponse, UA_TYPES_BROWSENEXTRESPONSE>;
-    Response response = UA_Client_Service_browseNext(client.handle(), request);
-    detail::throwOnBadStatus(response->responseHeader.serviceResult);
+    auto response = browseNext(client, asWrapper<BrowseNextRequest>(request));
     if (response->resultsSize != 1) {
         throw BadStatus(UA_STATUSCODE_BADUNEXPECTEDERROR);
     }
@@ -94,18 +99,25 @@ std::vector<ReferenceDescription> browseAll(
 }
 
 std::vector<ExpandedNodeId> browseRecursive(Server& server, const BrowseDescription& bd) {
-    UA_ExpandedNodeId* resultsNative{};
-    size_t resultsSize{};
-    const auto status = UA_Server_browseRecursive(
-        server.handle(), bd.handle(), &resultsSize, &resultsNative
+    size_t arraySize{};
+    UA_ExpandedNodeId* array{};
+    const auto status = UA_Server_browseRecursive(server.handle(), bd.handle(), &arraySize, &array);
+    std::vector<ExpandedNodeId> result(
+        std::make_move_iterator(array),
+        std::make_move_iterator(array + arraySize)  // NOLINT
     );
-    detail::throwOnBadStatus(status);
-    std::vector<ExpandedNodeId> results(resultsSize);
-    for (size_t i = 0; i < resultsSize; ++i) {
-        results[i].swap(resultsNative[i]);  // NOLINT
-    }
-    UA_Array_delete(resultsNative, resultsSize, &detail::getUaDataType(UA_TYPES_EXPANDEDNODEID));
-    return results;
+    UA_free(array);  // NOLINT
+    throwIfBad(status);
+    return result;
+}
+
+TranslateBrowsePathsToNodeIdsResponse translateBrowsePathsToNodeIds(
+    Client& client, const TranslateBrowsePathsToNodeIdsRequest& request
+) {
+    TranslateBrowsePathsToNodeIdsResponse response =
+        UA_Client_Service_translateBrowsePathsToNodeIds(client.handle(), request);
+    throwIfBad(response->responseHeader.serviceResult);
+    return response;
 }
 
 template <>
@@ -115,7 +127,7 @@ BrowsePathResult translateBrowsePathToNodeIds<Server>(
     BrowsePathResult result = UA_Server_translateBrowsePathToNodeIds(
         server.handle(), browsePath.handle()
     );
-    detail::throwOnBadStatus(result->statusCode);
+    throwIfBad(result->statusCode);
     return result;
 }
 
@@ -125,14 +137,11 @@ BrowsePathResult translateBrowsePathToNodeIds<Client>(
 ) {
     UA_TranslateBrowsePathsToNodeIdsRequest request{};
     request.browsePathsSize = 1;
-    // NOLINTNEXTLINE, won't be modified
-    request.browsePaths = const_cast<UA_BrowsePath*>(browsePath.handle());
+    request.browsePaths = const_cast<UA_BrowsePath*>(browsePath.handle());  // NOLINT
 
-    using Response = TypeWrapper<
-        UA_TranslateBrowsePathsToNodeIdsResponse,
-        UA_TYPES_TRANSLATEBROWSEPATHSTONODEIDSRESPONSE>;
-    Response response = UA_Client_Service_translateBrowsePathsToNodeIds(client.handle(), request);
-    detail::throwOnBadStatus(response->responseHeader.serviceResult);
+    auto response = translateBrowsePathsToNodeIds(
+        client, asWrapper<TranslateBrowsePathsToNodeIdsRequest>(request)
+    );
     if (response->resultsSize != 1) {
         throw BadStatus(UA_STATUSCODE_BADUNEXPECTEDERROR);
     }
@@ -157,6 +166,18 @@ BrowsePathResult browseSimplifiedBrowsePath(
     );
     const BrowsePath bp(origin, RelativePath(relativePathElements));
     return translateBrowsePathToNodeIds(serverOrClient, bp);
+}
+
+RegisterNodesResponse registerNodes(Client& client, const RegisterNodesRequest& request) {
+    RegisterNodesResponse response = UA_Client_Service_registerNodes(client.handle(), request);
+    throwIfBad(response->responseHeader.serviceResult);
+    return response;
+}
+
+UnregisterNodesResponse unregisterNodes(Client& client, const UnregisterNodesRequest& request) {
+    UnregisterNodesResponse response = UA_Client_Service_unregisterNodes(client.handle(), request);
+    throwIfBad(response->responseHeader.serviceResult);
+    return response;
 }
 
 // explicit template instantiations

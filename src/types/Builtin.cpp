@@ -19,13 +19,13 @@ namespace opcua {
 /* ------------------------------------------- String ------------------------------------------- */
 
 String::String(std::string_view str)
-    : String(UA_String{detail::allocUaString(str)}) {}
+    : String(detail::allocNativeString(str)) {}
 
 bool String::empty() const noexcept {
     return handle()->length == 0U;
 }
 
-std::string_view String::get() const {
+std::string_view String::get() const noexcept {
     return detail::toStringView(*handle());
 }
 
@@ -52,7 +52,7 @@ std::ostream& operator<<(std::ostream& os, const String& string) {
 
 /* -------------------------------------------- Guid -------------------------------------------- */
 
-Guid::Guid(UA_UInt32 data1, UA_UInt16 data2, UA_UInt16 data3, std::array<UA_Byte, 8> data4)
+Guid::Guid(UA_UInt32 data1, UA_UInt16 data2, UA_UInt16 data3, std::array<UA_Byte, 8> data4) noexcept
     : Guid(UA_Guid{
           data1,
           data2,
@@ -60,7 +60,7 @@ Guid::Guid(UA_UInt32 data1, UA_UInt16 data2, UA_UInt16 data3, std::array<UA_Byte
           {data4[0], data4[1], data4[2], data4[3], data4[4], data4[5], data4[6], data4[7]},
       }) {}
 
-Guid Guid::random() {
+Guid Guid::random() noexcept {
     return Guid(UA_Guid_random());  // NOLINT
 }
 
@@ -93,11 +93,11 @@ std::ostream& operator<<(std::ostream& os, const Guid& guid) {
 /* ----------------------------------------- ByteString ----------------------------------------- */
 
 ByteString::ByteString(std::string_view str)
-    : ByteString(UA_ByteString{detail::allocUaString(str)}) {}
+    : ByteString(detail::allocNativeString(str)) {}
 
 ByteString::ByteString(const std::vector<uint8_t>& bytes) {
     const auto status = UA_ByteString_allocBuffer(handle(), bytes.size());
-    detail::throwOnBadStatus(status);
+    throwIfBad(status);
     std::copy(bytes.begin(), bytes.end(), handle()->data);
 }
 
@@ -105,7 +105,7 @@ bool ByteString::empty() const noexcept {
     return handle()->length == 0U;
 }
 
-std::string_view ByteString::get() const {
+std::string_view ByteString::get() const noexcept {
     return detail::toStringView(*handle());
 }
 
@@ -162,13 +162,13 @@ bool operator!=(std::string_view lhs, const ByteString& rhs) noexcept {
 /* ----------------------------------------- XmlElement ----------------------------------------- */
 
 XmlElement::XmlElement(std::string_view str)
-    : XmlElement(UA_XmlElement{detail::allocUaString(str)}) {}
+    : XmlElement(detail::allocNativeString(str)) {}
 
 bool XmlElement::empty() const noexcept {
     return handle()->length == 0U;
 }
 
-std::string_view XmlElement::get() const {
+std::string_view XmlElement::get() const noexcept {
     return detail::toStringView(*handle());
 }
 
@@ -179,14 +179,16 @@ std::ostream& operator<<(std::ostream& os, const XmlElement& xmlElement) {
 
 /* ---------------------------------------- QualifiedName --------------------------------------- */
 
-QualifiedName::QualifiedName(uint16_t namespaceIndex, std::string_view name)
-    : QualifiedName(UA_QualifiedName{namespaceIndex, detail::allocUaString(name)}) {}
+QualifiedName::QualifiedName(uint16_t namespaceIndex, std::string_view name) {
+    handle()->namespaceIndex = namespaceIndex;
+    handle()->name = detail::allocNativeString(name);
+}
 
 uint16_t QualifiedName::getNamespaceIndex() const noexcept {
     return handle()->namespaceIndex;
 }
 
-std::string_view QualifiedName::getName() const {
+std::string_view QualifiedName::getName() const noexcept {
     return detail::toStringView(handle()->name);
 }
 
@@ -194,8 +196,9 @@ std::string_view QualifiedName::getName() const {
 
 LocalizedText::LocalizedText(
     std::string_view locale, std::string_view text, bool assertLocaleFormat
-)
-    : LocalizedText(UA_LocalizedText{detail::allocUaString(locale), detail::allocUaString(text)}) {
+) {
+    handle()->locale = detail::allocNativeString(locale);
+    handle()->text = detail::allocNativeString(text);
     if (assertLocaleFormat) {
         // NOLINTNEXTLINE
         assert(
@@ -205,11 +208,11 @@ LocalizedText::LocalizedText(
     }
 }
 
-std::string_view LocalizedText::getText() const {
+std::string_view LocalizedText::getText() const noexcept {
     return detail::toStringView(handle()->text);
 }
 
-std::string_view LocalizedText::getLocale() const {
+std::string_view LocalizedText::getLocale() const noexcept {
     return detail::toStringView(handle()->locale);
 }
 
@@ -273,29 +276,20 @@ const DiagnosticInfo* DiagnosticInfo::getInnerDiagnosticInfo() const noexcept {
 
 /* ---------------------------------------- NumericRange ---------------------------------------- */
 
-bool operator==(const NumericRangeDimension& lhs, const NumericRangeDimension& rhs) noexcept {
-    return (lhs.min == rhs.min) && (lhs.max == rhs.max);
-}
-
-bool operator!=(const NumericRangeDimension& lhs, const NumericRangeDimension& rhs) noexcept {
-    return !(lhs == rhs);
-}
-
-NumericRange::NumericRange() = default;
-
 NumericRange::NumericRange(std::string_view encodedRange) {
+    UA_String encodedRangeNative = detail::toNativeString(encodedRange);
     UA_NumericRange native{};
 #if UAPP_OPEN62541_VER_GE(1, 1)
-    const auto status = UA_NumericRange_parse(&native, String(encodedRange));
+    const auto status = UA_NumericRange_parse(&native, encodedRangeNative);
 #else
-    const auto status = UA_NumericRange_parseFromString(&native, String(encodedRange).handle());
+    const auto status = UA_NumericRange_parseFromString(&native, &encodedRangeNative);
 #endif
-    dimensions_ = std::vector<NumericRangeDimension>(
+    dimensions_.assign(
         native.dimensions,
         native.dimensions + native.dimensionsSize  // NOLINT
     );
     UA_free(native.dimensions);  // NOLINT
-    detail::throwOnBadStatus(status);
+    throwIfBad(status);
 }
 
 NumericRange::NumericRange(std::vector<NumericRangeDimension> dimensions)
@@ -303,14 +297,6 @@ NumericRange::NumericRange(std::vector<NumericRangeDimension> dimensions)
 
 NumericRange::NumericRange(const UA_NumericRange& native)
     : dimensions_(native.dimensions, native.dimensions + native.dimensionsSize) {}  // NOLINT
-
-bool NumericRange::empty() const noexcept {
-    return dimensions_.empty();
-}
-
-const std::vector<NumericRangeDimension>& NumericRange::get() const noexcept {
-    return dimensions_;
-}
 
 std::string NumericRange::toString() const {
     std::ostringstream ss;

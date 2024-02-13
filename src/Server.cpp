@@ -65,7 +65,7 @@ public:
 
     void runStartup() {
         const auto status = UA_Server_run_startup(handle());
-        detail::throwOnBadStatus(status);
+        throwIfBad(status);
         running_ = true;
     }
 
@@ -73,7 +73,9 @@ public:
         if (!running_) {
             runStartup();
         }
-        return UA_Server_run_iterate(handle(), false /* don't wait */);
+        auto interval = UA_Server_run_iterate(handle(), false /* don't wait */);
+        detail::getExceptionCatcher(getContext()).rethrow();
+        return interval;
     }
 
     void run() {
@@ -82,9 +84,15 @@ public:
         }
         runStartup();
         const std::lock_guard<std::mutex> lock(mutex_);
-        while (running_) {
-            // https://github.com/open62541/open62541/blob/master/examples/server_mainloop.c
-            UA_Server_run_iterate(handle(), true /* wait for messages in the networklayer */);
+        try {
+            while (running_) {
+                // https://github.com/open62541/open62541/blob/master/examples/server_mainloop.c
+                UA_Server_run_iterate(handle(), true /* wait for messages in the networklayer */);
+                detail::getExceptionCatcher(getContext()).rethrow();
+            }
+        } catch (...) {
+            running_ = false;
+            throw;
         }
     }
 
@@ -93,7 +101,7 @@ public:
         // wait for run loop to complete
         const std::lock_guard<std::mutex> lock(mutex_);
         const auto status = UA_Server_run_shutdown(handle());
-        detail::throwOnBadStatus(status);
+        throwIfBad(status);
     }
 
     bool isRunning() const noexcept {
@@ -146,12 +154,25 @@ static void applyDefaults(UA_ServerConfig* config) {
 #endif
 }
 
-Server::Server(uint16_t port, ByteString certificate)
+Server::Server(uint16_t port, ByteString certificate, Logger logger)
     : connection_(std::make_shared<Connection>(*this)) {
-    const auto status = UA_ServerConfig_setMinimal(
-        getConfig(this), port, certificate.empty() ? nullptr : certificate.handle()
-    );
-    detail::throwOnBadStatus(status);
+    // The logger should be set as soon as possible, ideally even before UA_ServerConfig_setMinimal.
+    // However, the logger gets overwritten by UA_ServerConfig_setMinimal() in older versions of
+    // open62541. The best we can do in this case, is to first call UA_ServerConfig_setMinimal and
+    // then setLogger.
+    auto setConfig = [&] {
+        const auto status = UA_ServerConfig_setMinimal(
+            getConfig(this), port, certificate.empty() ? nullptr : certificate.handle()
+        );
+        throwIfBad(status);
+    };
+#if UAPP_OPEN62541_VER_GE(1, 1)
+    setLogger(std::move(logger));
+    setConfig();
+#else
+    setConfig();
+    setLogger(std::move(logger));
+#endif
     applyDefaults(getConfig(this));
     setAccessControl(std::make_unique<AccessControlDefault>());
 }
@@ -178,7 +199,7 @@ Server::Server(
         asNative(revocationList.data()),
         revocationList.size()
     );
-    detail::throwOnBadStatus(status);
+    throwIfBad(status);
     applyDefaults(getConfig(this));
     setAccessControl(std::make_unique<AccessControlDefault>());
 }
@@ -279,12 +300,12 @@ static void valueCallbackOnWrite(
 void Server::setVariableNodeValueCallback(const NodeId& id, ValueCallback callback) {
     auto* nodeContext = getContext().getOrCreateNodeContext(id);
     nodeContext->valueCallback = std::move(callback);
-    detail::throwOnBadStatus(UA_Server_setNodeContext(handle(), id, nodeContext));
+    throwIfBad(UA_Server_setNodeContext(handle(), id, nodeContext));
 
     UA_ValueCallback callbackNative;
     callbackNative.onRead = valueCallbackOnRead;
     callbackNative.onWrite = valueCallbackOnWrite;
-    detail::throwOnBadStatus(UA_Server_setVariableNode_valueCallback(handle(), id, callbackNative));
+    throwIfBad(UA_Server_setVariableNode_valueCallback(handle(), id, callbackNative));
 }
 
 inline static NumericRange asRange(const UA_NumericRange* range) noexcept {
@@ -333,12 +354,12 @@ static UA_StatusCode valueSourceWrite(
 void Server::setVariableNodeValueBackend(const NodeId& id, ValueBackendDataSource backend) {
     auto* nodeContext = getContext().getOrCreateNodeContext(id);
     nodeContext->dataSource = std::move(backend);
-    detail::throwOnBadStatus(UA_Server_setNodeContext(handle(), id, nodeContext));
+    throwIfBad(UA_Server_setNodeContext(handle(), id, nodeContext));
 
     UA_DataSource dataSourceNative;
     dataSourceNative.read = valueSourceRead;
     dataSourceNative.write = valueSourceWrite;
-    detail::throwOnBadStatus(UA_Server_setVariableNode_dataSource(handle(), id, dataSourceNative));
+    throwIfBad(UA_Server_setVariableNode_dataSource(handle(), id, dataSourceNative));
 }
 
 #ifdef UA_ENABLE_SUBSCRIPTIONS
@@ -369,8 +390,8 @@ bool Server::isRunning() const noexcept {
     return connection_->isRunning();
 }
 
-Node<Server> Server::getNode(const NodeId& id) {
-    return {*this, id};
+Node<Server> Server::getNode(NodeId id) {
+    return {*this, std::move(id)};
 }
 
 Node<Server> Server::getRootNode() {

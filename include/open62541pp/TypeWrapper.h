@@ -3,7 +3,7 @@
 #include <cassert>
 #include <cstdint>
 #include <type_traits>
-#include <utility>  // move, swap
+#include <utility>  // exchange, swap
 
 #include "open62541pp/Common.h"
 #include "open62541pp/ErrorHandling.h"
@@ -16,7 +16,7 @@ namespace opcua {
 /**
  * @defgroup TypeWrapper Wrapper classes of UA_* types
  *
- * Safe wrapper classes for heap-allocated open62541 `UA_*` types to prevent memory leaks.
+ * Safe wrapper classes for open62541 `UA_*` types to prevent memory leaks.
  * @n
  * All wrapper classes inherit from opcua::TypeWrapper.
  * Native open62541 objects can be accessed using the opcua::TypeWrapper::handle() method.
@@ -45,89 +45,90 @@ public:
     TypeWrapper() = default;
 
     /// Constructor with native object (deep copy).
-    explicit TypeWrapper(const T& data) {
-        copy(data);
-    }
+    explicit TypeWrapper(const T& native)
+        : native_(detail::copy(native, UA_TYPES[typeIndex])) {}
 
     /// Constructor with native object (move rvalue).
-    constexpr TypeWrapper(T&& data) noexcept  // NOLINT, implicit wanted
-        : data_(data) {}
+    constexpr TypeWrapper(T&& native) noexcept  // NOLINT, implicit wanted
+        : native_(std::exchange(native, {})) {}
 
     ~TypeWrapper() {  // NOLINT
         clear();
     };
 
     /// Copy constructor (deep copy).
-    TypeWrapper(const TypeWrapper& other) {
-        copy(other.data_);
-    }
+    TypeWrapper(const TypeWrapper& other)
+        : native_(detail::copy(other.native_, UA_TYPES[typeIndex])) {}
 
     /// Move constructor.
-    TypeWrapper(TypeWrapper&& other) noexcept {
-        swap(other);
-    }
+    TypeWrapper(TypeWrapper&& other) noexcept
+        : native_(std::exchange(other.native_, {})) {}
 
     /// Copy assignment (deep copy).
     TypeWrapper& operator=(const TypeWrapper& other) {  // NOLINT, false positive
-        if (this == &other) {
-            return *this;
+        if (this != &other) {
+            clear();
+            native_ = detail::copy(other.native_, UA_TYPES[typeIndex]);
         }
-        copy(other.data_);
         return *this;
     }
 
     /// Copy assignment with native object (deep copy).
-    TypeWrapper& operator=(const T& other) {
-        copy(other);
+    TypeWrapper& operator=(const T& native) {
+        if (&native_ != &native) {
+            clear();
+            native_ = detail::copy(native, UA_TYPES[typeIndex]);
+        }
         return *this;
     }
 
     /// Move assignment.
     TypeWrapper& operator=(TypeWrapper&& other) noexcept {
-        if (this == &other) {
-            return *this;
+        if (this != &other) {
+            std::swap(native_, other.native_);
         }
-        swap(other);
         return *this;
     }
 
     /// Move assignment with native object.
-    TypeWrapper& operator=(T&& other) noexcept {
-        clear();
-        data_ = other;
+    TypeWrapper& operator=(T&& native) noexcept {
+        if (&native_ != &native) {
+            clear();
+            native_ = std::exchange(native, {});
+        }
         return *this;
     }
 
     /// Implicit conversion to native object.
     constexpr operator T&() noexcept {  // NOLINT
-        return data_;
+        return native_;
     }
 
     /// Implicit conversion to native object.
     constexpr operator const T&() const noexcept {  // NOLINT
-        return data_;
+        return native_;
     }
 
     /// Member access to native object.
     constexpr T* operator->() noexcept {
-        return &data_;
+        return &native_;
     }
 
     /// Member access to native object.
     constexpr const T* operator->() const noexcept {
-        return &data_;
+        return &native_;
     }
 
     /// Swap with wrapper object.
     void swap(TypeWrapper& other) noexcept {
         static_assert(std::is_swappable_v<T>);
-        std::swap(data_, other.data_);
+        std::swap(native_, other.native_);
     }
 
     /// Swap with native object.
-    void swap(T& other) noexcept {
+    void swap(T& native) noexcept {
         static_assert(std::is_swappable_v<T>);
-        std::swap(data_, other);
+        std::swap(native_, native);
     }
 
     /// Get type as type index of the ::UA_TYPES array.
@@ -137,46 +138,41 @@ public:
 
     /// Return pointer to native object.
     constexpr T* handle() noexcept {
-        return &data_;
+        return &native_;
     }
 
     /// Return const pointer to native object.
     constexpr const T* handle() const noexcept {
-        return &data_;
+        return &native_;
     };
 
 protected:
-    inline static void checkMemSize() {
-        assert(sizeof(T) == UA_TYPES[typeIndex].memSize);
-    }
-
     void clear() noexcept {
-        checkMemSize();
-        UA_clear(&data_, &UA_TYPES[typeIndex]);
-    }
-
-    void copy(const T& data) {
-        clear();
-        checkMemSize();
-        auto status = UA_copy(&data, &data_, &UA_TYPES[typeIndex]);  // deep copy of data
-        detail::throwOnBadStatus(status);
+        detail::clear(native_, UA_TYPES[typeIndex]);
     }
 
 private:
-    T data_{};
+    T native_{};
 };
 
 /* -------------------------------------------- Trait ------------------------------------------- */
 
 namespace detail {
 
-// https://stackoverflow.com/a/51910887
-template <typename T, TypeIndex typeIndex>
-std::true_type isTypeWrapperImpl(TypeWrapper<T, typeIndex>*);
-std::false_type isTypeWrapperImpl(...);
+template <typename T>
+struct IsTypeWrapper {
+    // https://stackoverflow.com/a/51910887
+    template <typename U, TypeIndex typeIndex>
+    static std::true_type check(const TypeWrapper<U, typeIndex>&);
+
+    static std::false_type check(...);
+
+    using type = decltype(check(std::declval<T&>()));  // NOLINT
+    static constexpr bool value = type::value;
+};
 
 template <typename T>
-using IsTypeWrapper = decltype(isTypeWrapperImpl(std::declval<T*>()));
+inline constexpr bool isTypeWrapper = IsTypeWrapper<T>::value;
 
 }  // namespace detail
 
@@ -280,32 +276,32 @@ constexpr const NativeType& asNative(const WrapperType& wrapper) noexcept {
 
 // generate from UA_* type comparison
 
-template <typename T, typename = std::enable_if_t<detail::IsTypeWrapper<T>::value>>
+template <typename T, typename = std::enable_if_t<detail::isTypeWrapper<T>>>
 inline bool operator==(const T& lhs, const T& rhs) noexcept {
     return (*lhs.handle() == *rhs.handle());
 }
 
-template <typename T, typename = std::enable_if_t<detail::IsTypeWrapper<T>::value>>
+template <typename T, typename = std::enable_if_t<detail::isTypeWrapper<T>>>
 inline bool operator!=(const T& lhs, const T& rhs) noexcept {
     return (*lhs.handle() != *rhs.handle());
 }
 
-template <typename T, typename = std::enable_if_t<detail::IsTypeWrapper<T>::value>>
+template <typename T, typename = std::enable_if_t<detail::isTypeWrapper<T>>>
 inline bool operator<(const T& lhs, const T& rhs) noexcept {
     return (*lhs.handle() < *rhs.handle());
 }
 
-template <typename T, typename = std::enable_if_t<detail::IsTypeWrapper<T>::value>>
+template <typename T, typename = std::enable_if_t<detail::isTypeWrapper<T>>>
 inline bool operator>(const T& lhs, const T& rhs) noexcept {
     return (*lhs.handle() > *rhs.handle());
 }
 
-template <typename T, typename = std::enable_if_t<detail::IsTypeWrapper<T>::value>>
+template <typename T, typename = std::enable_if_t<detail::isTypeWrapper<T>>>
 inline bool operator<=(const T& lhs, const T& rhs) noexcept {
     return (*lhs.handle() <= *rhs.handle());
 }
 
-template <typename T, typename = std::enable_if_t<detail::IsTypeWrapper<T>::value>>
+template <typename T, typename = std::enable_if_t<detail::isTypeWrapper<T>>>
 inline bool operator>=(const T& lhs, const T& rhs) noexcept {
     return (*lhs.handle() >= *rhs.handle());
 }

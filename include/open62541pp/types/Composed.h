@@ -7,10 +7,11 @@
 #include <utility>  // forward
 #include <variant>
 
+#include "open62541pp/Bitmask.h"
 #include "open62541pp/Common.h"
 #include "open62541pp/NodeIds.h"  // ReferenceTypeId
 #include "open62541pp/Span.h"
-#include "open62541pp/TypeConverter.h"
+#include "open62541pp/TypeRegistry.h"  // getDataType
 #include "open62541pp/TypeWrapper.h"
 #include "open62541pp/detail/traits.h"
 #include "open62541pp/open62541.h"
@@ -34,19 +35,19 @@
     }
 
 // NOLINTNEXTLINE
-#define UAPP_COMPOSED_GETTER_WRAPPER_CONST(WrapperType, getterName, member)                        \
-    const WrapperType& getterName() const noexcept {                                               \
-        return asWrapper<WrapperType>(handle()->member);                                           \
+#define UAPP_COMPOSED_GETTER_WRAPPER_CONST(Type, getterName, member)                               \
+    const Type& getterName() const noexcept {                                                      \
+        return asWrapper<Type>(handle()->member);                                                  \
     }
 // NOLINTNEXTLINE
-#define UAPP_COMPOSED_GETTER_WRAPPER_NONCONST(WrapperType, getterName, member)                     \
-    WrapperType& getterName() noexcept {                                                           \
-        return asWrapper<WrapperType>(handle()->member);                                           \
+#define UAPP_COMPOSED_GETTER_WRAPPER_NONCONST(Type, getterName, member)                            \
+    Type& getterName() noexcept {                                                                  \
+        return asWrapper<Type>(handle()->member);                                                  \
     }
 // NOLINTNEXTLINE
-#define UAPP_COMPOSED_GETTER_WRAPPER(WrapperType, getterName, member)                              \
-    UAPP_COMPOSED_GETTER_WRAPPER_CONST(WrapperType, getterName, member)                            \
-    UAPP_COMPOSED_GETTER_WRAPPER_NONCONST(WrapperType, getterName, member)
+#define UAPP_COMPOSED_GETTER_WRAPPER(Type, getterName, member)                                     \
+    UAPP_COMPOSED_GETTER_WRAPPER_CONST(Type, getterName, member)                                   \
+    UAPP_COMPOSED_GETTER_WRAPPER_NONCONST(Type, getterName, member)
 
 // NOLINTNEXTLINE
 #define UAPP_COMPOSED_GETTER_SPAN(Type, getterName, memberArray, memberSize)                       \
@@ -68,9 +69,13 @@
 namespace opcua {
 
 /**
+ * \addtogroup TypeWrapper
+ * @{
+ */
+
+/**
  * UA_ApplicationDescription wrapper class.
  * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/7.2
- * @ingroup TypeWrapper
  */
 class ApplicationDescription
     : public TypeWrapper<UA_ApplicationDescription, UA_TYPES_APPLICATIONDESCRIPTION> {
@@ -89,7 +94,6 @@ public:
 /**
  * UA_RequestHeader wrapper class.
  * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/7.33
- * @ingroup TypeWrapper
  */
 class RequestHeader : public TypeWrapper<UA_RequestHeader, UA_TYPES_REQUESTHEADER> {
 public:
@@ -117,7 +121,6 @@ public:
 /**
  * UA_ResponseHeader wrapper class.
  * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/7.34
- * @ingroup TypeWrapper
  */
 class ResponseHeader : public TypeWrapper<UA_ResponseHeader, UA_TYPES_RESPONSEHEADER> {
 public:
@@ -134,9 +137,8 @@ public:
 /**
  * User identity token type.
  * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/7.43
- * @ingroup TypeWrapper
  */
-enum class UserTokenType : uint32_t {
+enum class UserTokenType : int32_t {
     // clang-format off
     Anonymous   = 0,  ///< No token is required
     Username    = 1,  ///< A username/password token
@@ -148,7 +150,6 @@ enum class UserTokenType : uint32_t {
 /**
  * UA_UserTokenPolicy wrapper class.
  * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/7.42
- * @ingroup TypeWrapper
  */
 class UserTokenPolicy : public TypeWrapper<UA_UserTokenPolicy, UA_TYPES_USERTOKENPOLICY> {
 public:
@@ -172,7 +173,6 @@ public:
 /**
  * UA_EndpointDescription wrapper class.
  * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/7.14
- * @ingroup TypeWrapper
  */
 class EndpointDescription
     : public TypeWrapper<UA_EndpointDescription, UA_TYPES_ENDPOINTDESCRIPTION> {
@@ -193,6 +193,54 @@ public:
 
 /* --------------------------------------- Node attributes -------------------------------------- */
 
+/**
+ * Node attributes mask.
+ * Bitmask used in the node attributes parameters to specify which attributes are set.
+ * @see UA_NodeAttributesMask
+ */
+enum class NodeAttributesMask : uint32_t {
+    // clang-format off
+    None                    = 0,
+    AccessLevel             = 1,
+    ArrayDimensions         = 2,
+    BrowseName              = 4,
+    ContainsNoLoops         = 8,
+    DataType                = 16,
+    Description             = 32,
+    DisplayName             = 64,
+    EventNotifier           = 128,
+    Executable              = 256,
+    Historizing             = 512,
+    InverseName             = 1024,
+    IsAbstract              = 2048,
+    MinimumSamplingInterval = 4096,
+    NodeClass               = 8192,
+    NodeId                  = 16384,
+    Symmetric               = 32768,
+    UserAccessLevel         = 65536,
+    UserExecutable          = 131072,
+    UserWriteMask           = 262144,
+    ValueRank               = 524288,
+    WriteMask               = 1048576,
+    Value                   = 2097152,
+    DataTypeDefinition      = 4194304,
+    RolePermissions         = 8388608,
+    AccessRestrictions      = 16777216,
+    All                     = 33554431,
+    BaseNode                = 26501220,
+    Object                  = 26501348,
+    ObjectType              = 26503268,
+    Variable                = 26571383,
+    VariableType            = 28600438,
+    Method                  = 26632548,
+    ReferenceType           = 26537060,
+    View                    = 26501356,
+    // clang-format on
+};
+
+template <>
+struct IsBitmaskEnum<NodeAttributesMask> : std::true_type {};
+
 // Specifialized macros to generate getters/setters for `UA_*Attribute` classes.
 // The `specifiedAttributes` mask is automatically updated in the setter methods.
 // A fluent interface is used for the setter methods.
@@ -207,6 +255,15 @@ public:
     }
 
 // NOLINTNEXTLINE
+#define UAPP_NODEATTR_BITMASK(Type, suffix, member, flag)                                          \
+    UAPP_COMPOSED_GETTER(Type, get##suffix, member)                                                \
+    auto& set##suffix(Type member) noexcept {                                                      \
+        handle()->specifiedAttributes |= flag;                                                     \
+        handle()->member = member.get();                                                           \
+        return *this;                                                                              \
+    }
+
+// NOLINTNEXTLINE
 #define UAPP_NODEATTR_CAST(Type, suffix, member, flag)                                             \
     UAPP_COMPOSED_GETTER_CAST(Type, get##suffix, member)                                           \
     auto& set##suffix(Type member) noexcept {                                                      \
@@ -216,45 +273,45 @@ public:
     }
 
 // NOLINTNEXTLINE
-#define UAPP_NODEATTR_WRAPPER(WrapperType, suffix, member, flag)                                   \
-    UAPP_COMPOSED_GETTER_WRAPPER_CONST(WrapperType, get##suffix, member)                           \
-    auto& set##suffix(const WrapperType& member) {                                                 \
+#define UAPP_NODEATTR_WRAPPER(Type, suffix, member, flag)                                          \
+    UAPP_COMPOSED_GETTER_WRAPPER_CONST(Type, get##suffix, member)                                  \
+    auto& set##suffix(const Type& member) {                                                        \
         handle()->specifiedAttributes |= flag;                                                     \
-        asWrapper<WrapperType>(handle()->member) = member;                                         \
+        asWrapper<Type>(handle()->member) = member;                                                \
         return *this;                                                                              \
     }
 
 // NOLINTNEXTLINE
-#define UAPP_NODEATTR_ARRAY(Type, suffix, memberArray, memberSize, flag)                           \
-    UAPP_COMPOSED_GETTER_SPAN(Type, get##suffix, memberArray, memberSize)                          \
-    auto& set##suffix(Span<const Type> memberArray) {                                              \
+#define UAPP_NODEATTR_ARRAY(Type, suffix, member, memberSize, flag)                                \
+    UAPP_COMPOSED_GETTER_SPAN(Type, get##suffix, member, memberSize)                               \
+    auto& set##suffix(Span<const Type> member) {                                                   \
+        const auto& dataType = opcua::getDataType<Type>();                                         \
         handle()->specifiedAttributes |= flag;                                                     \
-        UA_Array_delete(                                                                           \
-            handle()->memberArray, handle()->memberSize, &detail::guessDataType<Type>()            \
-        );                                                                                         \
-        handle()->memberArray = detail::toNativeArrayAlloc(                                        \
-            memberArray.begin(), memberArray.end()                                                 \
-        );                                                                                         \
-        handle()->memberSize = memberArray.size();                                                 \
+        detail::deallocateArray(handle()->member, handle()->memberSize, dataType);                 \
+        handle()->member = detail::copyArray(member.data(), member.size(), dataType);              \
+        handle()->memberSize = member.size();                                                      \
         return *this;                                                                              \
     }
 
 // NOLINTNEXTLINT
 #define UAPP_NODEATTR_COMMON                                                                       \
-    UAPP_COMPOSED_GETTER(uint32_t, getSpecifiedAttributes, specifiedAttributes)                    \
+    UAPP_COMPOSED_GETTER(Bitmask<NodeAttributesMask>, getSpecifiedAttributes, specifiedAttributes) \
     UAPP_NODEATTR_WRAPPER(                                                                         \
         LocalizedText, DisplayName, displayName, UA_NODEATTRIBUTESMASK_DISPLAYNAME                 \
     )                                                                                              \
     UAPP_NODEATTR_WRAPPER(                                                                         \
         LocalizedText, Description, description, UA_NODEATTRIBUTESMASK_DESCRIPTION                 \
     )                                                                                              \
-    UAPP_NODEATTR(uint32_t, WriteMask, writeMask, UA_NODEATTRIBUTESMASK_WRITEMASK)                 \
-    UAPP_NODEATTR(uint32_t, UserWriteMask, userWriteMask, UA_NODEATTRIBUTESMASK_USERWRITEMASK)
+    UAPP_NODEATTR_BITMASK(                                                                         \
+        Bitmask<WriteMask>, WriteMask, writeMask, UA_NODEATTRIBUTESMASK_WRITEMASK                  \
+    )                                                                                              \
+    UAPP_NODEATTR_BITMASK(                                                                         \
+        Bitmask<WriteMask>, UserWriteMask, userWriteMask, UA_NODEATTRIBUTESMASK_USERWRITEMASK      \
+    )
 
 /**
  * UA_NodeAttributes wrapper class.
  * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/7.24
- * @ingroup TypeWrapper
  */
 class NodeAttributes : public TypeWrapper<UA_NodeAttributes, UA_TYPES_NODEATTRIBUTES> {
 public:
@@ -266,9 +323,8 @@ public:
 /**
  * UA_ObjectAttributes wrapper class.
  * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/7.24.2
- * @ingroup TypeWrapper
  */
-class ObjectAttributes : public TypeWrapper<UA_ObjectAttributes, UA_TYPES_OBJECTTYPEATTRIBUTES> {
+class ObjectAttributes : public TypeWrapper<UA_ObjectAttributes, UA_TYPES_OBJECTATTRIBUTES> {
 public:
     using TypeWrapperBase::TypeWrapperBase;
 
@@ -276,13 +332,14 @@ public:
     ObjectAttributes();
 
     UAPP_NODEATTR_COMMON
-    UAPP_NODEATTR(uint8_t, EventNotifier, eventNotifier, UA_NODEATTRIBUTESMASK_EVENTNOTIFIER)
+    UAPP_NODEATTR_BITMASK(
+        Bitmask<EventNotifier>, EventNotifier, eventNotifier, UA_NODEATTRIBUTESMASK_EVENTNOTIFIER
+    )
 };
 
 /**
  * UA_VariableAttributes wrapper class.
  * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/7.24.3
- * @ingroup TypeWrapper
  */
 class VariableAttributes : public TypeWrapper<UA_VariableAttributes, UA_TYPES_VARIABLEATTRIBUTES> {
 public:
@@ -312,7 +369,7 @@ public:
     /// Deduce the `dataType` from the template type.
     template <typename T>
     auto& setDataType() {
-        return setDataType(asWrapper<NodeId>(detail::guessDataType<T>().typeId));
+        return setDataType(asWrapper<NodeId>(opcua::getDataType<T>().typeId));
     }
 
     UAPP_NODEATTR_CAST(ValueRank, ValueRank, valueRank, UA_NODEATTRIBUTESMASK_VALUERANK)
@@ -323,8 +380,15 @@ public:
         arrayDimensionsSize,
         UA_NODEATTRIBUTESMASK_ARRAYDIMENSIONS
     )
-    UAPP_NODEATTR(uint8_t, AccessLevel, accessLevel, UA_NODEATTRIBUTESMASK_ACCESSLEVEL)
-    UAPP_NODEATTR(uint8_t, UserAccessLevel, userAccessLevel, UA_NODEATTRIBUTESMASK_USERACCESSLEVEL)
+    UAPP_NODEATTR_BITMASK(
+        Bitmask<AccessLevel>, AccessLevel, accessLevel, UA_NODEATTRIBUTESMASK_ACCESSLEVEL
+    )
+    UAPP_NODEATTR_BITMASK(
+        Bitmask<AccessLevel>,
+        UserAccessLevel,
+        userAccessLevel,
+        UA_NODEATTRIBUTESMASK_USERACCESSLEVEL
+    )
     UAPP_NODEATTR(
         double,
         MinimumSamplingInterval,
@@ -337,7 +401,6 @@ public:
 /**
  * UA_MethodAttributes wrapper class.
  * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/7.24.4
- * @ingroup TypeWrapper
  */
 class MethodAttributes : public TypeWrapper<UA_MethodAttributes, UA_TYPES_METHODATTRIBUTES> {
 public:
@@ -354,7 +417,6 @@ public:
 /**
  * UA_ObjectTypeAttributes wrapper class.
  * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/7.24.5
- * @ingroup TypeWrapper
  */
 class ObjectTypeAttributes
     : public TypeWrapper<UA_ObjectTypeAttributes, UA_TYPES_OBJECTTYPEATTRIBUTES> {
@@ -371,7 +433,6 @@ public:
 /**
  * UA_VariableAttributes wrapper class.
  * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/7.24.6
- * @ingroup TypeWrapper
  */
 class VariableTypeAttributes
     : public TypeWrapper<UA_VariableTypeAttributes, UA_TYPES_VARIABLETYPEATTRIBUTES> {
@@ -402,7 +463,7 @@ public:
     /// Deduce the `dataType` from the template type.
     template <typename T>
     auto& setDataType() {
-        return setDataType(asWrapper<NodeId>(detail::guessDataType<T>().typeId));
+        return setDataType(asWrapper<NodeId>(opcua::getDataType<T>().typeId));
     }
 
     UAPP_NODEATTR_CAST(ValueRank, ValueRank, valueRank, UA_NODEATTRIBUTESMASK_VALUERANK)
@@ -419,7 +480,6 @@ public:
 /**
  * UA_ReferenceTypeAttributes wrapper class.
  * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/7.24.7
- * @ingroup TypeWrapper
  */
 class ReferenceTypeAttributes
     : public TypeWrapper<UA_ReferenceTypeAttributes, UA_TYPES_REFERENCETYPEATTRIBUTES> {
@@ -440,7 +500,6 @@ public:
 /**
  * UA_DataTypeAttributes wrapper class.
  * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/7.24.8
- * @ingroup TypeWrapper
  */
 class DataTypeAttributes : public TypeWrapper<UA_DataTypeAttributes, UA_TYPES_DATATYPEATTRIBUTES> {
 public:
@@ -456,7 +515,6 @@ public:
 /**
  * UA_ViewAttributes wrapper class.
  * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/7.24.9
- * @ingroup TypeWrapper
  */
 class ViewAttributes : public TypeWrapper<UA_ViewAttributes, UA_TYPES_VIEWATTRIBUTES> {
 public:
@@ -467,7 +525,9 @@ public:
 
     UAPP_NODEATTR_COMMON
     UAPP_NODEATTR(bool, IsAbstract, containsNoLoops, UA_NODEATTRIBUTESMASK_CONTAINSNOLOOPS)
-    UAPP_NODEATTR(uint8_t, EventNotifier, eventNotifier, UA_NODEATTRIBUTESMASK_EVENTNOTIFIER)
+    UAPP_NODEATTR_BITMASK(
+        Bitmask<EventNotifier>, EventNotifier, eventNotifier, UA_NODEATTRIBUTESMASK_EVENTNOTIFIER
+    )
 };
 
 #undef UAPP_NODEATTR
@@ -475,12 +535,11 @@ public:
 #undef UAPP_NODEATTR_ARRAY
 #undef UAPP_NODEATTR_COMMON
 
-/* ------------------------------------------- Browse ------------------------------------------- */
+/* ---------------------------------------------------------------------------------------------- */
 
 /**
  * UA_UserIdentityToken wrapper class.
  * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/7.41
- * @ingroup TypeWrapper
  */
 class UserIdentityToken : public TypeWrapper<UA_UserIdentityToken, UA_TYPES_USERIDENTITYTOKEN> {
 public:
@@ -492,7 +551,6 @@ public:
 /**
  * UA_AnonymousIdentityToken wrapper class.
  * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/7.41.3
- * @ingroup TypeWrapper
  */
 class AnonymousIdentityToken
     : public TypeWrapper<UA_AnonymousIdentityToken, UA_TYPES_ANONYMOUSIDENTITYTOKEN> {
@@ -505,7 +563,6 @@ public:
 /**
  * UA_UserNameIdentityToken wrapper class.
  * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/7.41.4
- * @ingroup TypeWrapper
  */
 class UserNameIdentityToken
     : public TypeWrapper<UA_UserNameIdentityToken, UA_TYPES_USERNAMEIDENTITYTOKEN> {
@@ -521,7 +578,6 @@ public:
 /**
  * UA_X509IdentityToken wrapper class.
  * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/7.41.5
- * @ingroup TypeWrapper
  */
 class X509IdentityToken : public TypeWrapper<UA_X509IdentityToken, UA_TYPES_X509IDENTITYTOKEN> {
 public:
@@ -534,7 +590,6 @@ public:
 /**
  * UA_IssuedIdentityToken wrapper class.
  * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/7.41.6
- * @ingroup TypeWrapper
  */
 class IssuedIdentityToken
     : public TypeWrapper<UA_IssuedIdentityToken, UA_TYPES_ISSUEDIDENTITYTOKEN> {
@@ -548,11 +603,21 @@ public:
 
 /**
  * UA_AddNodesItem wrapper class.
- * @ingroup TypeWrapper
+ * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/5.7.2
  */
 class AddNodesItem : public TypeWrapper<UA_AddNodesItem, UA_TYPES_ADDNODESITEM> {
 public:
     using TypeWrapperBase::TypeWrapperBase;
+
+    AddNodesItem(
+        ExpandedNodeId parentNodeId,
+        NodeId referenceTypeId,
+        ExpandedNodeId requestedNewNodeId,
+        QualifiedName browseName,
+        NodeClass nodeClass,
+        ExtensionObject nodeAttributes,
+        ExpandedNodeId typeDefinition
+    );
 
     UAPP_COMPOSED_GETTER_WRAPPER(ExpandedNodeId, getParentNodeId, parentNodeId)
     UAPP_COMPOSED_GETTER_WRAPPER(NodeId, getReferenceTypeId, referenceTypeId)
@@ -564,12 +629,62 @@ public:
 };
 
 /**
+ * UA_AddNodesResult wrapper class.
+ * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/5.7.2
+ */
+class AddNodesResult : public TypeWrapper<UA_AddNodesResult, UA_TYPES_ADDNODESRESULT> {
+public:
+    using TypeWrapperBase::TypeWrapperBase;
+
+    UAPP_COMPOSED_GETTER(StatusCode, getStatusCode, statusCode)
+    UAPP_COMPOSED_GETTER_WRAPPER(NodeId, getAddedNodeId, addedNodeId)
+};
+
+/**
+ * UA_AddNodesRequest wrapper class.
+ * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/5.7.2
+ */
+class AddNodesRequest : public TypeWrapper<UA_AddNodesRequest, UA_TYPES_ADDNODESREQUEST> {
+public:
+    using TypeWrapperBase::TypeWrapperBase;
+
+    AddNodesRequest(RequestHeader requestHeader, Span<const AddNodesItem> nodesToAdd);
+
+    UAPP_COMPOSED_GETTER_WRAPPER(RequestHeader, getRequestHeader, requestHeader)
+    UAPP_COMPOSED_GETTER_SPAN_WRAPPER(AddNodesItem, getNodesToAdd, nodesToAdd, nodesToAddSize)
+};
+
+/**
+ * UA_AddNodesResponse wrapper class.
+ * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/5.7.2
+ */
+class AddNodesResponse : public TypeWrapper<UA_AddNodesResponse, UA_TYPES_ADDNODESRESPONSE> {
+public:
+    using TypeWrapperBase::TypeWrapperBase;
+
+    UAPP_COMPOSED_GETTER_WRAPPER(ResponseHeader, getResponseHeader, responseHeader)
+    UAPP_COMPOSED_GETTER_SPAN_WRAPPER(AddNodesResult, getResults, results, resultsSize)
+    UAPP_COMPOSED_GETTER_SPAN_WRAPPER(
+        DiagnosticInfo, getDiagnosticInfos, diagnosticInfos, diagnosticInfosSize
+    )
+};
+
+/**
  * UA_AddReferencesItem wrapper class.
- * @ingroup TypeWrapper
+ * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/5.7.3
  */
 class AddReferencesItem : public TypeWrapper<UA_AddReferencesItem, UA_TYPES_ADDREFERENCESITEM> {
 public:
     using TypeWrapperBase::TypeWrapperBase;
+
+    AddReferencesItem(
+        NodeId sourceNodeId,
+        NodeId referenceTypeId,
+        bool isForward,
+        std::string_view targetServerUri,
+        ExpandedNodeId targetNodeId,
+        NodeClass targetNodeClass
+    );
 
     UAPP_COMPOSED_GETTER_WRAPPER(NodeId, getSourceNodeId, sourceNodeId)
     UAPP_COMPOSED_GETTER_WRAPPER(NodeId, getReferenceTypeId, referenceTypeId)
@@ -580,25 +695,102 @@ public:
 };
 
 /**
+ * UA_AddReferencesRequest wrapper class.
+ * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/5.7.3
+ */
+class AddReferencesRequest
+    : public TypeWrapper<UA_AddReferencesRequest, UA_TYPES_ADDREFERENCESREQUEST> {
+public:
+    using TypeWrapperBase::TypeWrapperBase;
+
+    AddReferencesRequest(
+        RequestHeader requestHeader, Span<const AddReferencesItem> referencesToAdd
+    );
+
+    UAPP_COMPOSED_GETTER_WRAPPER(RequestHeader, getRequestHeader, requestHeader)
+    UAPP_COMPOSED_GETTER_SPAN_WRAPPER(
+        AddReferencesItem, getReferencesToAdd, referencesToAdd, referencesToAddSize
+    )
+};
+
+/**
+ * UA_AddReferencesResponse wrapper class.
+ * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/5.7.3
+ */
+class AddReferencesResponse
+    : public TypeWrapper<UA_AddReferencesResponse, UA_TYPES_ADDREFERENCESRESPONSE> {
+public:
+    using TypeWrapperBase::TypeWrapperBase;
+
+    UAPP_COMPOSED_GETTER_WRAPPER(ResponseHeader, getResponseHeader, responseHeader)
+    UAPP_COMPOSED_GETTER_SPAN_WRAPPER(StatusCode, getResults, results, resultsSize)
+    UAPP_COMPOSED_GETTER_SPAN_WRAPPER(
+        DiagnosticInfo, getDiagnosticInfos, diagnosticInfos, diagnosticInfosSize
+    )
+};
+
+/**
  * UA_DeleteNodesItem wrapper class.
- * @ingroup TypeWrapper
+ * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/5.7.4
  */
 class DeleteNodesItem : public TypeWrapper<UA_DeleteNodesItem, UA_TYPES_DELETENODESITEM> {
 public:
     using TypeWrapperBase::TypeWrapperBase;
+
+    DeleteNodesItem(NodeId nodeId, bool deleteTargetReferences);
 
     UAPP_COMPOSED_GETTER_WRAPPER(NodeId, getNodeId, nodeId)
     UAPP_COMPOSED_GETTER(bool, getDeleteTargetReferences, deleteTargetReferences)
 };
 
 /**
+ * UA_DeleteNodesRequest wrapper class.
+ * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/5.7.4
+ */
+class DeleteNodesRequest : public TypeWrapper<UA_DeleteNodesRequest, UA_TYPES_DELETENODESREQUEST> {
+public:
+    using TypeWrapperBase::TypeWrapperBase;
+
+    DeleteNodesRequest(RequestHeader requestHeader, Span<const DeleteNodesItem> nodesToDelete);
+
+    UAPP_COMPOSED_GETTER_WRAPPER(RequestHeader, getRequestHeader, requestHeader)
+    UAPP_COMPOSED_GETTER_SPAN_WRAPPER(
+        DeleteNodesItem, getNodesToDelete, nodesToDelete, nodesToDeleteSize
+    )
+};
+
+/**
+ * UA_DeleteNodesResponse wrapper class.
+ * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/5.7.4
+ */
+class DeleteNodesResponse
+    : public TypeWrapper<UA_DeleteNodesResponse, UA_TYPES_DELETENODESRESPONSE> {
+public:
+    using TypeWrapperBase::TypeWrapperBase;
+
+    UAPP_COMPOSED_GETTER_WRAPPER(ResponseHeader, getResponseHeader, responseHeader)
+    UAPP_COMPOSED_GETTER_SPAN_WRAPPER(StatusCode, getResults, results, resultsSize)
+    UAPP_COMPOSED_GETTER_SPAN_WRAPPER(
+        DiagnosticInfo, getDiagnosticInfos, diagnosticInfos, diagnosticInfosSize
+    )
+};
+
+/**
  * UA_DeleteReferencesItem wrapper class.
- * @ingroup TypeWrapper
+ * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/5.7.5
  */
 class DeleteReferencesItem
     : public TypeWrapper<UA_DeleteReferencesItem, UA_TYPES_DELETEREFERENCESITEM> {
 public:
     using TypeWrapperBase::TypeWrapperBase;
+
+    DeleteReferencesItem(
+        NodeId sourceNodeId,
+        NodeId referenceTypeId,
+        bool isForward,
+        ExpandedNodeId targetNodeId,
+        bool deleteBidirectional
+    );
 
     UAPP_COMPOSED_GETTER_WRAPPER(NodeId, getSourceNodeId, sourceNodeId)
     UAPP_COMPOSED_GETTER_WRAPPER(NodeId, getReferenceTypeId, referenceTypeId)
@@ -608,8 +800,86 @@ public:
 };
 
 /**
+ * UA_DeleteReferencesRequest wrapper class.
+ * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/5.7.5
+ */
+class DeleteReferencesRequest
+    : public TypeWrapper<UA_DeleteReferencesRequest, UA_TYPES_DELETEREFERENCESREQUEST> {
+public:
+    using TypeWrapperBase::TypeWrapperBase;
+
+    DeleteReferencesRequest(
+        RequestHeader requestHeader, Span<const DeleteReferencesItem> referencesToDelete
+    );
+
+    UAPP_COMPOSED_GETTER_WRAPPER(RequestHeader, getRequestHeader, requestHeader)
+    UAPP_COMPOSED_GETTER_SPAN_WRAPPER(
+        DeleteReferencesItem, getReferencesToDelete, referencesToDelete, referencesToDeleteSize
+    )
+};
+
+/**
+ * UA_DeleteReferencesResponse wrapper class.
+ * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/5.7.5
+ */
+class DeleteReferencesResponse
+    : public TypeWrapper<UA_DeleteReferencesResponse, UA_TYPES_DELETEREFERENCESRESPONSE> {
+public:
+    using TypeWrapperBase::TypeWrapperBase;
+
+    UAPP_COMPOSED_GETTER_WRAPPER(ResponseHeader, getResponseHeader, responseHeader)
+    UAPP_COMPOSED_GETTER_SPAN_WRAPPER(StatusCode, getResults, results, resultsSize)
+    UAPP_COMPOSED_GETTER_SPAN_WRAPPER(
+        DiagnosticInfo, getDiagnosticInfos, diagnosticInfos, diagnosticInfosSize
+    )
+};
+
+/**
+ * UA_ViewDescription wrapper class.
+ */
+class ViewDescription : public TypeWrapper<UA_ViewDescription, UA_TYPES_VIEWDESCRIPTION> {
+public:
+    using TypeWrapperBase::TypeWrapperBase;
+
+    ViewDescription(NodeId viewId, DateTime timestamp, uint32_t viewVersion);
+
+    UAPP_COMPOSED_GETTER_WRAPPER(NodeId, getViewId, viewId)
+    UAPP_COMPOSED_GETTER_WRAPPER(DateTime, getTimestamp, timestamp)
+    UAPP_COMPOSED_GETTER(uint32_t, getViewVersion, viewVersion)
+};
+
+/**
+ * Browse result mask.
+ *
+ * The enum can be used as a bitmask and allows bitwise operations, e.g.:
+ * @code
+ * auto mask = BrowseResultMask::ReferenceTypeId | BrowseResultMask::IsForward;
+ * @endcode
+ *
+ * @see UA_BrowseResultMask
+ * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/5.8.2
+ */
+enum class BrowseResultMask : uint32_t {
+    // clang-format off
+    None              = UA_BROWSERESULTMASK_NONE,
+    ReferenceTypeId   = UA_BROWSERESULTMASK_REFERENCETYPEID,
+    IsForward         = UA_BROWSERESULTMASK_ISFORWARD,
+    NodeClass         = UA_BROWSERESULTMASK_NODECLASS,
+    BrowseName        = UA_BROWSERESULTMASK_BROWSENAME,
+    DisplayName       = UA_BROWSERESULTMASK_DISPLAYNAME,
+    TypeDefinition    = UA_BROWSERESULTMASK_TYPEDEFINITION,
+    All               = UA_BROWSERESULTMASK_ALL,
+    ReferenceTypeInfo = UA_BROWSERESULTMASK_REFERENCETYPEINFO,
+    TargetInfo        = UA_BROWSERESULTMASK_TARGETINFO,
+    // clang-format on
+};
+
+template <>
+struct IsBitmaskEnum<BrowseResultMask> : std::true_type {};
+
+/**
  * UA_BrowseDescription wrapper class.
- * @ingroup TypeWrapper
+ * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/5.8.2
  */
 class BrowseDescription : public TypeWrapper<UA_BrowseDescription, UA_TYPES_BROWSEDESCRIPTION> {
 public:
@@ -618,23 +888,23 @@ public:
     BrowseDescription(
         NodeId nodeId,
         BrowseDirection browseDirection,
-        NodeId referenceType = ReferenceTypeId::References,
+        NodeId referenceTypeId = ReferenceTypeId::References,
         bool includeSubtypes = true,
-        uint32_t nodeClassMask = UA_NODECLASS_UNSPECIFIED,
-        uint32_t resultMask = UA_BROWSERESULTMASK_ALL
+        Bitmask<NodeClass> nodeClassMask = NodeClass::Unspecified,
+        Bitmask<BrowseResultMask> resultMask = BrowseResultMask::All
     );
 
     UAPP_COMPOSED_GETTER_WRAPPER(NodeId, getNodeId, nodeId)
     UAPP_COMPOSED_GETTER_CAST(BrowseDirection, getBrowseDirection, browseDirection)
     UAPP_COMPOSED_GETTER_WRAPPER(NodeId, getReferenceTypeId, referenceTypeId)
     UAPP_COMPOSED_GETTER(bool, getIncludeSubtypes, includeSubtypes)
-    UAPP_COMPOSED_GETTER(uint32_t, getNodeClassMask, nodeClassMask)
-    UAPP_COMPOSED_GETTER(uint32_t, getResultMask, resultMask)
+    UAPP_COMPOSED_GETTER(Bitmask<NodeClass>, getNodeClassMask, nodeClassMask)
+    UAPP_COMPOSED_GETTER(Bitmask<BrowseResultMask>, getResultMask, resultMask)
 };
 
 /**
  * UA_ReferenceDescription wrapper class.
- * @ingroup TypeWrapper
+ * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/7.30
  */
 class ReferenceDescription
     : public TypeWrapper<UA_ReferenceDescription, UA_TYPES_REFERENCEDESCRIPTION> {
@@ -652,7 +922,7 @@ public:
 
 /**
  * UA_BrowseResult wrapper class.
- * @ingroup TypeWrapper
+ * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/7.6
  */
 class BrowseResult : public TypeWrapper<UA_BrowseResult, UA_TYPES_BROWSERESULT> {
 public:
@@ -666,8 +936,77 @@ public:
 };
 
 /**
+ * UA_BrowseRequest wrapper class.
+ */
+class BrowseRequest : public TypeWrapper<UA_BrowseRequest, UA_TYPES_BROWSEREQUEST> {
+public:
+    using TypeWrapperBase::TypeWrapperBase;
+
+    BrowseRequest(
+        RequestHeader requestHeader,
+        ViewDescription view,
+        uint32_t requestedMaxReferencesPerNode,
+        Span<const BrowseDescription> nodesToBrowse
+    );
+
+    UAPP_COMPOSED_GETTER_WRAPPER(RequestHeader, getRequestHeader, requestHeader)
+    UAPP_COMPOSED_GETTER_WRAPPER(ViewDescription, getView, view)
+    UAPP_COMPOSED_GETTER(uint32_t, getRequestedMaxReferencesPerNode, requestedMaxReferencesPerNode)
+    UAPP_COMPOSED_GETTER_SPAN_WRAPPER(
+        BrowseDescription, getNodesToBrowse, nodesToBrowse, nodesToBrowseSize
+    )
+};
+
+/**
+ * UA_BrowseResponse wrapper class.
+ */
+class BrowseResponse : public TypeWrapper<UA_BrowseResponse, UA_TYPES_BROWSERESPONSE> {
+public:
+    using TypeWrapperBase::TypeWrapperBase;
+
+    UAPP_COMPOSED_GETTER_WRAPPER(ResponseHeader, getResponseHeader, responseHeader)
+    UAPP_COMPOSED_GETTER_SPAN_WRAPPER(BrowseResult, getResults, results, resultsSize)
+    UAPP_COMPOSED_GETTER_SPAN_WRAPPER(
+        DiagnosticInfo, getDiagnosticInfos, diagnosticInfos, diagnosticInfosSize
+    )
+};
+
+/**
+ * UA_BrowseNextRequest wrapper class.
+ */
+class BrowseNextRequest : public TypeWrapper<UA_BrowseNextRequest, UA_TYPES_BROWSENEXTREQUEST> {
+public:
+    using TypeWrapperBase::TypeWrapperBase;
+
+    BrowseNextRequest(
+        RequestHeader requestHeader,
+        bool releaseContinuationPoints,
+        Span<const ByteString> continuationPoints
+    );
+
+    UAPP_COMPOSED_GETTER_WRAPPER(RequestHeader, getRequestHeader, requestHeader)
+    UAPP_COMPOSED_GETTER(bool, getReleaseContinuationPoints, releaseContinuationPoints)
+    UAPP_COMPOSED_GETTER_SPAN_WRAPPER(
+        ByteString, getContinuationPoints, continuationPoints, continuationPointsSize
+    )
+};
+
+/**
+ * UA_BrowseNextResponse wrapper class.
+ */
+class BrowseNextResponse : public TypeWrapper<UA_BrowseNextResponse, UA_TYPES_BROWSENEXTRESPONSE> {
+public:
+    using TypeWrapperBase::TypeWrapperBase;
+
+    UAPP_COMPOSED_GETTER_WRAPPER(ResponseHeader, getResponseHeader, responseHeader)
+    UAPP_COMPOSED_GETTER_SPAN_WRAPPER(BrowseResult, getResults, results, resultsSize)
+    UAPP_COMPOSED_GETTER_SPAN_WRAPPER(
+        DiagnosticInfo, getDiagnosticInfos, diagnosticInfos, diagnosticInfosSize
+    )
+};
+
+/**
  * UA_RelativePathElement wrapper class.
- * @ingroup TypeWrapper
  */
 class RelativePathElement
     : public TypeWrapper<UA_RelativePathElement, UA_TYPES_RELATIVEPATHELEMENT> {
@@ -675,7 +1014,7 @@ public:
     using TypeWrapperBase::TypeWrapperBase;
 
     RelativePathElement(
-        NodeId referenceType, bool isInverse, bool includeSubtypes, QualifiedName targetName
+        NodeId referenceTypeId, bool isInverse, bool includeSubtypes, QualifiedName targetName
     );
 
     UAPP_COMPOSED_GETTER_WRAPPER(NodeId, getReferenceTypeId, referenceTypeId)
@@ -686,7 +1025,6 @@ public:
 
 /**
  * UA_RelativePath wrapper class.
- * @ingroup TypeWrapper
  */
 class RelativePath : public TypeWrapper<UA_RelativePath, UA_TYPES_RELATIVEPATH> {
 public:
@@ -700,7 +1038,6 @@ public:
 
 /**
  * UA_BrowsePath wrapper class.
- * @ingroup TypeWrapper
  */
 class BrowsePath : public TypeWrapper<UA_BrowsePath, UA_TYPES_BROWSEPATH> {
 public:
@@ -714,7 +1051,6 @@ public:
 
 /**
  * UA_BrowsePathTarget wrapper class.
- * @ingroup TypeWrapper
  */
 class BrowsePathTarget : public TypeWrapper<UA_BrowsePathTarget, UA_TYPES_BROWSEPATHTARGET> {
 public:
@@ -726,7 +1062,6 @@ public:
 
 /**
  * UA_BrowsePathResult wrapper class.
- * @ingroup TypeWrapper
  */
 class BrowsePathResult : public TypeWrapper<UA_BrowsePathResult, UA_TYPES_BROWSEPATHRESULT> {
 public:
@@ -737,9 +1072,100 @@ public:
 };
 
 /**
+ * UA_TranslateBrowsePathsToNodeIdsRequest wrapper class.
+ */
+class TranslateBrowsePathsToNodeIdsRequest
+    : public TypeWrapper<
+          UA_TranslateBrowsePathsToNodeIdsRequest,
+          UA_TYPES_TRANSLATEBROWSEPATHSTONODEIDSREQUEST> {
+public:
+    using TypeWrapperBase::TypeWrapperBase;
+
+    TranslateBrowsePathsToNodeIdsRequest(
+        RequestHeader requestHeader, Span<const BrowsePath> browsePaths
+    );
+
+    UAPP_COMPOSED_GETTER_WRAPPER(RequestHeader, getRequestHeader, requestHeader)
+    UAPP_COMPOSED_GETTER_SPAN_WRAPPER(BrowsePath, getBrowsePaths, browsePaths, browsePathsSize)
+};
+
+/**
+ * UA_TranslateBrowsePathsToNodeIdsResponse wrapper class.
+ */
+class TranslateBrowsePathsToNodeIdsResponse
+    : public TypeWrapper<
+          UA_TranslateBrowsePathsToNodeIdsResponse,
+          UA_TYPES_TRANSLATEBROWSEPATHSTONODEIDSRESPONSE> {
+public:
+    using TypeWrapperBase::TypeWrapperBase;
+
+    UAPP_COMPOSED_GETTER_WRAPPER(ResponseHeader, getResponseHeader, responseHeader)
+    UAPP_COMPOSED_GETTER_SPAN_WRAPPER(BrowsePathResult, getResults, results, resultsSize)
+    UAPP_COMPOSED_GETTER_SPAN_WRAPPER(
+        DiagnosticInfo, getDiagnosticInfos, diagnosticInfos, diagnosticInfosSize
+    )
+};
+
+/**
+ * UA_RegisterNodesRequest wrapper class.
+ */
+class RegisterNodesRequest
+    : public TypeWrapper<UA_RegisterNodesRequest, UA_TYPES_REGISTERNODESREQUEST> {
+public:
+    using TypeWrapperBase::TypeWrapperBase;
+
+    RegisterNodesRequest(RequestHeader requestHeader, Span<const NodeId> nodesToRegister);
+
+    UAPP_COMPOSED_GETTER_WRAPPER(RequestHeader, getRequestHeader, requestHeader)
+    UAPP_COMPOSED_GETTER_SPAN_WRAPPER(
+        NodeId, getNodesToRegister, nodesToRegister, nodesToRegisterSize
+    )
+};
+
+/**
+ * UA_RegisterNodesResponse wrapper class.
+ */
+class RegisterNodesResponse
+    : public TypeWrapper<UA_RegisterNodesResponse, UA_TYPES_REGISTERNODESRESPONSE> {
+public:
+    using TypeWrapperBase::TypeWrapperBase;
+
+    UAPP_COMPOSED_GETTER_WRAPPER(ResponseHeader, getResponseHeader, responseHeader)
+    UAPP_COMPOSED_GETTER_SPAN_WRAPPER(
+        NodeId, getRegisteredNodeIds, registeredNodeIds, registeredNodeIdsSize
+    )
+};
+
+/**
+ * UA_UnregisterNodesRequest wrapper class.
+ */
+class UnregisterNodesRequest
+    : public TypeWrapper<UA_UnregisterNodesRequest, UA_TYPES_UNREGISTERNODESREQUEST> {
+public:
+    using TypeWrapperBase::TypeWrapperBase;
+
+    UnregisterNodesRequest(RequestHeader requestHeader, Span<const NodeId> nodesToUnregister);
+
+    UAPP_COMPOSED_GETTER_WRAPPER(RequestHeader, getRequestHeader, requestHeader)
+    UAPP_COMPOSED_GETTER_SPAN_WRAPPER(
+        NodeId, getNodesToUnregister, nodesToUnregister, nodesToUnregisterSize
+    )
+};
+
+/**
+ * UA_UnregisterNodesResponse wrapper class.
+ */
+class UnregisterNodesResponse
+    : public TypeWrapper<UA_UnregisterNodesResponse, UA_TYPES_UNREGISTERNODESRESPONSE> {
+public:
+    using TypeWrapperBase::TypeWrapperBase;
+
+    UAPP_COMPOSED_GETTER_WRAPPER(ResponseHeader, getResponseHeader, responseHeader)
+};
+
+/**
  * UA_ReadValueId wrapper class.
  * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/7.29
- * @ingroup TypeWrapper
  */
 class ReadValueId : public TypeWrapper<UA_ReadValueId, UA_TYPES_READVALUEID> {
 public:
@@ -761,7 +1187,6 @@ public:
 /**
  * UA_ReadRequest wrapper class.
  * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/5.10.2
- * @ingroup TypeWrapper
  */
 class ReadRequest : public TypeWrapper<UA_ReadRequest, UA_TYPES_READREQUEST> {
 public:
@@ -783,7 +1208,6 @@ public:
 /**
  * UA_ReadResponse wrapper class.
  * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/5.10.2
- * @ingroup TypeWrapper
  */
 class ReadResponse : public TypeWrapper<UA_ReadResponse, UA_TYPES_READRESPONSE> {
 public:
@@ -799,7 +1223,6 @@ public:
 /**
  * UA_WriteValue wrapper class.
  * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/5.10.4
- * @ingroup TypeWrapper
  */
 class WriteValue : public TypeWrapper<UA_WriteValue, UA_TYPES_WRITEVALUE> {
 public:
@@ -818,7 +1241,6 @@ public:
 /**
  * UA_WriteRequest wrapper class.
  * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/5.10.4
- * @ingroup TypeWrapper
  */
 class WriteRequest : public TypeWrapper<UA_WriteRequest, UA_TYPES_WRITEREQUEST> {
 public:
@@ -833,7 +1255,6 @@ public:
 /**
  * UA_WriteResponse wrapper class.
  * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/5.10.4
- * @ingroup TypeWrapper
  */
 class WriteResponse : public TypeWrapper<UA_WriteResponse, UA_TYPES_WRITERESPONSE> {
 public:
@@ -846,6 +1267,21 @@ public:
     )
 };
 
+/**
+ * UA_EnumValueType wrapper class.
+ * @see https://reference.opcfoundation.org/Core/Part3/v105/docs/8.39
+ */
+class EnumValueType : public TypeWrapper<UA_EnumValueType, UA_TYPES_ENUMVALUETYPE> {
+public:
+    using TypeWrapperBase::TypeWrapperBase;
+
+    EnumValueType(int64_t value, LocalizedText displayName, LocalizedText description);
+
+    UAPP_COMPOSED_GETTER(int64_t, getValue, value)
+    UAPP_COMPOSED_GETTER_WRAPPER(LocalizedText, getDisplayName, displayName)
+    UAPP_COMPOSED_GETTER_WRAPPER(LocalizedText, getDescription, description)
+};
+
 /* ------------------------------------------- Method ------------------------------------------- */
 
 #ifdef UA_ENABLE_METHODCALLS
@@ -853,7 +1289,6 @@ public:
 /**
  * UA_Argument wrapper class.
  * @see https://reference.opcfoundation.org/Core/Part3/v105/docs/8.6
- * @ingroup TypeWrapper
  */
 class Argument : public TypeWrapper<UA_Argument, UA_TYPES_ARGUMENT> {
 public:
@@ -883,9 +1318,8 @@ public:
 /**
  * Filter operator.
  * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/7.7.3
- * @ingroup TypeWrapper
  */
-enum class FilterOperator : uint32_t {
+enum class FilterOperator : int32_t {
     // clang-format off
     Equals             = 0,
     IsNull             = 1,
@@ -913,7 +1347,6 @@ enum class FilterOperator : uint32_t {
  * Reference a sub-element in the ContentFilter elements array by index.
  * The index must be greater than the element index it is part of.
  * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/7.7.4.2
- * @ingroup TypeWrapper
  */
 class ElementOperand : public TypeWrapper<UA_ElementOperand, UA_TYPES_ELEMENTOPERAND> {
 public:
@@ -927,7 +1360,6 @@ public:
 /**
  * UA_LiteralOperand wrapper class.
  * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/7.7.4.3
- * @ingroup TypeWrapper
  */
 class LiteralOperand : public TypeWrapper<UA_LiteralOperand, UA_TYPES_LITERALOPERAND> {
 private:
@@ -950,7 +1382,6 @@ public:
 /**
  * UA_AttributeOperand wrapper class.
  * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/7.7.4.4
- * @ingroup TypeWrapper
  */
 class AttributeOperand : public TypeWrapper<UA_AttributeOperand, UA_TYPES_ATTRIBUTEOPERAND> {
 public:
@@ -974,7 +1405,6 @@ public:
 /**
  * UA_SimpleAttributeOperand wrapper class.
  * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/7.7.4.5
- * @ingroup TypeWrapper
  */
 class SimpleAttributeOperand
     : public TypeWrapper<UA_SimpleAttributeOperand, UA_TYPES_SIMPLEATTRIBUTEOPERAND> {
@@ -1005,7 +1435,6 @@ public:
  * - ExtensionObject (other types)
  *
  * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/7.7.4
- * @ingroup TypeWrapper
  */
 using FilterOperand = std::variant<
     ElementOperand,
@@ -1023,7 +1452,6 @@ using FilterOperand = std::variant<
  *
  * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/7.7.1
  * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/B.1
- * @ingroup TypeWrapper
  */
 class ContentFilterElement
     : public TypeWrapper<UA_ContentFilterElement, UA_TYPES_CONTENTFILTERELEMENT> {
@@ -1048,7 +1476,6 @@ public:
  *
  * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/7.7.1
  * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/B.1
- * @ingroup TypeWrapper
  */
 class ContentFilter : public TypeWrapper<UA_ContentFilter, UA_TYPES_CONTENTFILTER> {
 public:
@@ -1076,9 +1503,8 @@ ContentFilter operator||(const ContentFilter& lhs, const ContentFilter& rhs);
 /**
  * Data change trigger.
  * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/7.10
- * @ingroup TypeWrapper
  */
-enum class DataChangeTrigger : uint32_t {
+enum class DataChangeTrigger : int32_t {
     // clang-format off
     Status               = 0,
     StatusValue          = 1,
@@ -1089,9 +1515,8 @@ enum class DataChangeTrigger : uint32_t {
 /**
  * Deadband type.
  * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/7.22.2
- * @ingroup TypeWrapper
  */
-enum class DeadbandType : uint32_t {
+enum class DeadbandType : int32_t {
     // clang-format off
     None     = 0,
     Absolute = 1,
@@ -1102,7 +1527,6 @@ enum class DeadbandType : uint32_t {
 /**
  * UA_DataChangeFilter wrapper class.
  * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/7.22.2
- * @ingroup TypeWrapper
  */
 class DataChangeFilter : public TypeWrapper<UA_DataChangeFilter, UA_TYPES_DATACHANGEFILTER> {
 public:
@@ -1118,7 +1542,6 @@ public:
 /**
  * UA_EventFilter wrapper class.
  * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/7.22.3
- * @ingroup TypeWrapper
  */
 class EventFilter : public TypeWrapper<UA_EventFilter, UA_TYPES_EVENTFILTER> {
 public:
@@ -1137,7 +1560,6 @@ using AggregateConfiguration = UA_AggregateConfiguration;
 /**
  * UA_AggregateFilter wrapper class.
  * @see https://reference.opcfoundation.org/Core/Part4/v105/docs/7.22.4
- * @ingroup TypeWrapper
  */
 class AggregateFilter : public TypeWrapper<UA_AggregateFilter, UA_TYPES_AGGREGATEFILTER> {
 public:
@@ -1165,7 +1587,7 @@ public:
  * @see UA_PerformUpdateType
  * @see https://reference.opcfoundation.org/Core/Part11/v104/docs/6.8.3
  */
-enum class PerformUpdateType : uint32_t {
+enum class PerformUpdateType : int32_t {
     // clang-format off
     Insert  = 1,
     Replace = 2,
@@ -1173,5 +1595,9 @@ enum class PerformUpdateType : uint32_t {
     Remove  = 4,
     // clang-format on
 };
+
+/**
+ * @}
+ */
 
 }  // namespace opcua

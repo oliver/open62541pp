@@ -6,144 +6,131 @@
 
 #include <doctest/doctest.h>
 
-#include "open62541pp/Client.h"
 #include "open62541pp/Config.h"
 #include "open62541pp/Event.h"
 #include "open62541pp/NodeIds.h"
-#include "open62541pp/Server.h"
 #include "open62541pp/services/services.h"
 #include "open62541pp/types/DateTime.h"
 #include "open62541pp/types/ExtensionObject.h"
 
-#include "helper/Runner.h"
+#include "helper/ServerClientSetup.h"
+#include "helper/stringify.h"
 
 using namespace opcua;
 using namespace std::literals::chrono_literals;
 
-TEST_CASE("NodeManagement service set (server & client)") {
-    Server server;
-    ServerRunner serverRunner(server);
-    Client client;
-    client.connect("opc.tcp://localhost:4840");
+TEST_CASE_TEMPLATE("NodeManagement service set", ServerOrClient, Server, Client) {
+    ServerClientSetup setup;
+    setup.client.connect(setup.endpointUrl);
+    auto& server = setup.server;
+    auto& serverOrClient = setup.getInstance<ServerOrClient>();
+
     const NodeId objectsId{0, UA_NS0ID_OBJECTSFOLDER};
 
-    const auto testNodeManagement = [&](auto& serverOrClient) {
-        SUBCASE("Non-type nodes") {
-            CHECK_EQ(
-                services::addObject(serverOrClient, objectsId, {1, 1000}, "object"), NodeId(1, 1000)
-            );
-            CHECK_EQ(services::readNodeClass(server, {1, 1000}), NodeClass::Object);
+    SUBCASE("Non-type nodes") {
+        CHECK_EQ(
+            services::addObject(serverOrClient, objectsId, {1, 1000}, "object"), NodeId(1, 1000)
+        );
+        CHECK_EQ(services::readNodeClass(server, {1, 1000}), NodeClass::Object);
 
-            CHECK_EQ(
-                services::addFolder(serverOrClient, objectsId, {1, 1001}, "folder"), NodeId(1, 1001)
-            );
-            CHECK_EQ(services::readNodeClass(server, {1, 1001}), NodeClass::Object);
+        CHECK_EQ(
+            services::addFolder(serverOrClient, objectsId, {1, 1001}, "folder"), NodeId(1, 1001)
+        );
+        CHECK_EQ(services::readNodeClass(server, {1, 1001}), NodeClass::Object);
 
-            CHECK_EQ(
-                services::addVariable(serverOrClient, objectsId, {1, 1002}, "variable"),
-                NodeId(1, 1002)
-            );
-            CHECK_EQ(services::readNodeClass(server, {1, 1002}), NodeClass::Variable);
+        CHECK_EQ(
+            services::addVariable(serverOrClient, objectsId, {1, 1002}, "variable"), NodeId(1, 1002)
+        );
+        CHECK_EQ(services::readNodeClass(server, {1, 1002}), NodeClass::Variable);
 
-            CHECK_EQ(
-                services::addProperty(serverOrClient, objectsId, {1, 1003}, "property"),
-                NodeId(1, 1003)
-            );
-            CHECK_EQ(services::readNodeClass(server, {1, 1003}), NodeClass::Variable);
+        CHECK_EQ(
+            services::addProperty(serverOrClient, objectsId, {1, 1003}, "property"), NodeId(1, 1003)
+        );
+        CHECK_EQ(services::readNodeClass(server, {1, 1003}), NodeClass::Variable);
 
 #ifdef UA_ENABLE_METHODCALLS
-            CHECK_EQ(
-                services::addMethod(serverOrClient, objectsId, {1, 1004}, "method", {}, {}, {}),
-                NodeId(1, 1004)
-            );
-            CHECK_EQ(services::readNodeClass(server, {1, 1004}), NodeClass::Method);
+        CHECK_EQ(
+            services::addMethod(serverOrClient, objectsId, {1, 1004}, "method", {}, {}, {}),
+            NodeId(1, 1004)
+        );
+        CHECK_EQ(services::readNodeClass(server, {1, 1004}), NodeClass::Method);
 #endif
-        }
+    }
 
-        SUBCASE("Type nodes") {
-            CHECK_EQ(
-                services::addObjectType(
-                    serverOrClient, {0, UA_NS0ID_BASEOBJECTTYPE}, {1, 1000}, "objecttype"
-                ),
-                NodeId(1, 1000)
-            );
-            CHECK_EQ(services::readNodeClass(server, {1, 1000}), NodeClass::ObjectType);
+    SUBCASE("Type nodes") {
+        CHECK_EQ(
+            services::addObjectType(
+                serverOrClient, {0, UA_NS0ID_BASEOBJECTTYPE}, {1, 1000}, "objecttype"
+            ),
+            NodeId(1, 1000)
+        );
+        CHECK_EQ(services::readNodeClass(server, {1, 1000}), NodeClass::ObjectType);
 
-            CHECK_EQ(
-                services::addVariableType(
-                    serverOrClient, {0, UA_NS0ID_BASEVARIABLETYPE}, {1, 1001}, "variabletype"
-                ),
-                NodeId(1, 1001)
-            );
-            CHECK_EQ(services::readNodeClass(server, {1, 1001}), NodeClass::VariableType);
+        CHECK_EQ(
+            services::addVariableType(
+                serverOrClient, {0, UA_NS0ID_BASEVARIABLETYPE}, {1, 1001}, "variabletype"
+            ),
+            NodeId(1, 1001)
+        );
+        CHECK_EQ(services::readNodeClass(server, {1, 1001}), NodeClass::VariableType);
 
-            CHECK_EQ(
-                services::addReferenceType(
-                    serverOrClient, {0, UA_NS0ID_ORGANIZES}, {1, 1002}, "referenceType"
-                ),
-                NodeId(1, 1002)
-            );
-            CHECK_EQ(services::readNodeClass(server, {1, 1002}), NodeClass::ReferenceType);
+        CHECK_EQ(
+            services::addReferenceType(
+                serverOrClient, {0, UA_NS0ID_ORGANIZES}, {1, 1002}, "referenceType"
+            ),
+            NodeId(1, 1002)
+        );
+        CHECK_EQ(services::readNodeClass(server, {1, 1002}), NodeClass::ReferenceType);
 
-            CHECK_EQ(
-                services::addDataType(
-                    serverOrClient, {0, UA_NS0ID_STRUCTURE}, {1, 1003}, "dataType"
-                ),
-                NodeId(1, 1003)
-            );
-            CHECK_EQ(services::readNodeClass(server, {1, 1003}), NodeClass::DataType);
-        }
+        CHECK_EQ(
+            services::addDataType(serverOrClient, {0, UA_NS0ID_STRUCTURE}, {1, 1003}, "dataType"),
+            NodeId(1, 1003)
+        );
+        CHECK_EQ(services::readNodeClass(server, {1, 1003}), NodeClass::DataType);
+    }
 
-        SUBCASE("View nodes") {
-            CHECK_EQ(
-                services::addView(serverOrClient, {0, UA_NS0ID_VIEWSFOLDER}, {1, 1000}, "view"),
-                NodeId(1, 1000)
-            );
-            CHECK_EQ(services::readNodeClass(server, {1, 1000}), NodeClass::View);
-        }
+    SUBCASE("View nodes") {
+        CHECK_EQ(
+            services::addView(serverOrClient, {0, UA_NS0ID_VIEWSFOLDER}, {1, 1000}, "view"),
+            NodeId(1, 1000)
+        );
+        CHECK_EQ(services::readNodeClass(server, {1, 1000}), NodeClass::View);
+    }
 
-        SUBCASE("Random node id") {
-            // https://www.open62541.org/doc/1.3/server.html#node-addition-and-deletion
-            const auto id = services::addObject(serverOrClient, objectsId, {1, 0}, "random");
-            CHECK(id != NodeId(1, 0));
-            CHECK(id.getNamespaceIndex() == 1);
-        }
+    SUBCASE("Random node id") {
+        // https://www.open62541.org/doc/1.3/server.html#node-addition-and-deletion
+        const auto id = services::addObject(serverOrClient, objectsId, {1, 0}, "random");
+        CHECK(id != NodeId(1, 0));
+        CHECK(id.getNamespaceIndex() == 1);
+    }
 
-        SUBCASE("Add/delete reference") {
-            services::addFolder(serverOrClient, objectsId, {1, 1000}, "folder");
-            services::addObject(serverOrClient, objectsId, {1, 1001}, "object");
+    SUBCASE("Add/delete reference") {
+        services::addFolder(serverOrClient, objectsId, {1, 1000}, "folder");
+        services::addObject(serverOrClient, objectsId, {1, 1001}, "object");
+        services::addReference(serverOrClient, {1, 1000}, {1, 1001}, ReferenceTypeId::Organizes);
+        CHECK_THROWS_WITH(
             services::addReference(
                 serverOrClient, {1, 1000}, {1, 1001}, ReferenceTypeId::Organizes
-            );
-            CHECK_THROWS_WITH(
-                services::addReference(
-                    serverOrClient, {1, 1000}, {1, 1001}, ReferenceTypeId::Organizes
-                ),
-                "BadDuplicateReferenceNotAllowed"
-            );
-            CHECK_NOTHROW(services::deleteReference(
-                serverOrClient, {1, 1000}, {1, 1001}, ReferenceTypeId::Organizes, true, true
-            ));
-        }
+            ),
+            "BadDuplicateReferenceNotAllowed"
+        );
+        CHECK_NOTHROW(services::deleteReference(
+            serverOrClient, {1, 1000}, {1, 1001}, ReferenceTypeId::Organizes, true, true
+        ));
+    }
 
-        SUBCASE("Delete node") {
-            services::addObject(serverOrClient, objectsId, {1, 1000}, "object");
-            services::deleteNode(serverOrClient, {1, 1000});
-            CHECK_THROWS_WITH(services::deleteNode(serverOrClient, {1, 1000}), "BadNodeIdUnknown");
-        }
-    };
-
-    // clang-format off
-    SUBCASE("Server") { testNodeManagement(server); };
-    SUBCASE("Client") { testNodeManagement(client); };
-    // clang-format on
+    SUBCASE("Delete node") {
+        services::addObject(serverOrClient, objectsId, {1, 1000}, "object");
+        services::deleteNode(serverOrClient, {1, 1000});
+        CHECK_THROWS_WITH(services::deleteNode(serverOrClient, {1, 1000}), "BadNodeIdUnknown");
+    }
 }
 
-TEST_CASE("Attribute service set (server)") {
+TEST_CASE("Attribute service set (highlevel)") {
     Server server;
     const NodeId objectsId{0, UA_NS0ID_OBJECTSFOLDER};
 
-    SUBCASE("Read default attributes") {
+    SUBCASE("Read default variable node attributes") {
         const NodeId id{1, "testAttributes"};
         services::addVariable(server, objectsId, id, "testAttributes");
 
@@ -159,13 +146,14 @@ TEST_CASE("Attribute service set (server)") {
         CHECK(services::readDataType(server, id) == NodeId(0, UA_NS0ID_BASEDATATYPE));
         CHECK(services::readValueRank(server, id) == ValueRank::Any);
         CHECK(services::readArrayDimensions(server, id).empty());
-        CHECK(services::readAccessLevel(server, id) == UA_ACCESSLEVELMASK_READ);
+        CHECK(services::readAccessLevel(server, id) == AccessLevel::CurrentRead);
         const uint8_t adminUserAccessLevel = 0xFF;  // all bits set
         CHECK(services::readUserAccessLevel(server, id) == adminUserAccessLevel);
         CHECK(services::readMinimumSamplingInterval(server, id) == 0.0);
+        CHECK(services::readHistorizing(server, id) == false);
     }
 
-    SUBCASE("Read initial attributes") {
+    SUBCASE("Read initial variable node attributes") {
         VariableAttributes attr;
         attr.setDisplayName({"", "testAttributes"});
         attr.setDescription({"", "..."});
@@ -173,7 +161,7 @@ TEST_CASE("Attribute service set (server)") {
         attr.setDataType(DataTypeId::Int32);
         attr.setValueRank(ValueRank::TwoDimensions);
         attr.setArrayDimensions({2, 3});
-        attr.setAccessLevel(UA_ACCESSLEVELMASK_READ);
+        attr.setAccessLevel(AccessLevel::CurrentRead | AccessLevel::CurrentWrite);
         attr.setMinimumSamplingInterval(11.11);
 
         const NodeId id{1, "testAttributes"};
@@ -202,25 +190,38 @@ TEST_CASE("Attribute service set (server)") {
         );
     }
 
-    SUBCASE("Read/write node attributes") {
+    SUBCASE("Read/write object node attributes") {
+        const NodeId id{1, "testAttributes"};
+        services::addObject(server, objectsId, id, "testAttributes");
+
+        // write new attributes
+        const auto eventNotifier = EventNotifier::HistoryRead | EventNotifier::HistoryWrite;
+        CHECK_NOTHROW(services::writeEventNotifier(server, id, eventNotifier));
+
+        // read new attributes
+        CHECK(services::readEventNotifier(server, id).allOf(eventNotifier));
+    }
+
+    SUBCASE("Read/write variable node attributes") {
         const NodeId id{1, "testAttributes"};
         services::addVariable(server, objectsId, id, "testAttributes");
 
         // write new attributes
         CHECK_NOTHROW(services::writeDisplayName(server, id, {"en-US", "newDisplayName"}));
         CHECK_NOTHROW(services::writeDescription(server, id, {"de-DE", "newDescription"}));
-        CHECK_NOTHROW(services::writeWriteMask(server, id, 11));
+        CHECK_NOTHROW(services::writeWriteMask(server, id, WriteMask::Executable));
         CHECK_NOTHROW(services::writeDataType(server, id, NodeId{0, 2}));
         CHECK_NOTHROW(services::writeValueRank(server, id, ValueRank::TwoDimensions));
         CHECK_NOTHROW(services::writeArrayDimensions(server, id, {3, 2}));
-        const uint8_t newAccessLevel = UA_ACCESSLEVELMASK_READ | UA_ACCESSLEVELMASK_WRITE;
+        const auto newAccessLevel = AccessLevel::CurrentRead | AccessLevel::CurrentWrite;
         CHECK_NOTHROW(services::writeAccessLevel(server, id, newAccessLevel));
         CHECK_NOTHROW(services::writeMinimumSamplingInterval(server, id, 10.0));
+        CHECK_NOTHROW(services::writeHistorizing(server, id, true));
 
         // read new attributes
         CHECK(services::readDisplayName(server, id) == LocalizedText("en-US", "newDisplayName"));
         CHECK(services::readDescription(server, id) == LocalizedText("de-DE", "newDescription"));
-        CHECK(services::readWriteMask(server, id) == 11);
+        CHECK(services::readWriteMask(server, id) == UA_WRITEMASK_EXECUTABLE);
         CHECK(services::readDataType(server, id) == NodeId(0, 2));
         CHECK(services::readValueRank(server, id) == ValueRank::TwoDimensions);
         CHECK(services::readArrayDimensions(server, id).size() == 2);
@@ -228,7 +229,22 @@ TEST_CASE("Attribute service set (server)") {
         CHECK(services::readArrayDimensions(server, id).at(1) == 2);
         CHECK(services::readAccessLevel(server, id) == newAccessLevel);
         CHECK(services::readMinimumSamplingInterval(server, id) == 10.0);
+        CHECK(services::readHistorizing(server, id) == true);
     }
+
+#ifdef UA_ENABLE_METHODCALLS
+    SUBCASE("Read/write method node attributes") {
+        const NodeId id{1, "testMethod"};
+        services::addMethod(server, objectsId, id, "testMethod", nullptr, {}, {});
+
+        // write new attributes
+        CHECK_NOTHROW(services::writeExecutable(server, id, true));
+
+        // read new attributes
+        CHECK(services::readExecutable(server, id));
+        CHECK(services::readUserExecutable(server, id));
+    }
+#endif
 
     SUBCASE("Read/write reference node attributes") {
         const NodeId id{0, UA_NS0ID_REFERENCES};
@@ -331,11 +347,11 @@ TEST_CASE("Attribute service set (server)") {
     }
 }
 
-TEST_CASE("Attribute service set (server & client)") {
-    Server server;
-    ServerRunner serverRunner(server);
-    Client client;
-    client.connect("opc.tcp://localhost:4840");
+TEST_CASE_TEMPLATE("Attribute service set write/read", Pair, std::pair<Server, Server>, std::pair<Server, Client>, std::pair<Client, Server>, std::pair<Client, Client>) {
+    ServerClientSetup setup;
+    setup.client.connect(setup.endpointUrl);
+    auto& server = setup.server;
+    auto& client = setup.client;
 
     // create variable node
     const NodeId id{1, 1000};
@@ -349,165 +365,162 @@ TEST_CASE("Attribute service set (server & client)") {
     CHECK(services::readBrowseName(server, id) == services::readBrowseName(client, id));
 
     // check remaining attributes with possible writer/reader combinations
-    const auto testWriteReadAttribute = [&](auto& writer, auto& reader) {
-        const LocalizedText displayName("", "display name");
-        CHECK_NOTHROW(services::writeDisplayName(writer, id, displayName));
-        CHECK(services::readDisplayName(reader, id) == displayName);
+    auto& writer = setup.getInstance<typename Pair::first_type>();
+    auto& reader = setup.getInstance<typename Pair::second_type>();
 
-        const LocalizedText description("en-US", "description...");
-        CHECK_NOTHROW(services::writeDescription(writer, id, description));
-        CHECK(services::readDescription(reader, id) == description);
+    const LocalizedText displayName("", "display name");
+    CHECK_NOTHROW(services::writeDisplayName(writer, id, displayName));
+    CHECK(services::readDisplayName(reader, id) == displayName);
 
-        const NodeId dataType(0, UA_NS0ID_DOUBLE);
-        CHECK_NOTHROW(services::writeDataType(writer, id, dataType));
-        CHECK(services::readDataType(reader, id) == dataType);
+    const LocalizedText description("en-US", "description...");
+    CHECK_NOTHROW(services::writeDescription(writer, id, description));
+    CHECK(services::readDescription(reader, id) == description);
 
-        const ValueRank valueRank = ValueRank::OneDimension;
-        CHECK_NOTHROW(services::writeValueRank(writer, id, valueRank));
-        CHECK(services::readValueRank(reader, id) == valueRank);
+    const NodeId dataType(0, UA_NS0ID_DOUBLE);
+    CHECK_NOTHROW(services::writeDataType(writer, id, dataType));
+    CHECK(services::readDataType(reader, id) == dataType);
 
-        std::vector<uint32_t> arrayDimensions{3};
-        CHECK_NOTHROW(services::writeArrayDimensions(writer, id, arrayDimensions));
-        CHECK(services::readArrayDimensions(reader, id) == arrayDimensions);
+    const ValueRank valueRank = ValueRank::OneDimension;
+    CHECK_NOTHROW(services::writeValueRank(writer, id, valueRank));
+    CHECK(services::readValueRank(reader, id) == valueRank);
 
-        const std::vector<double> array{1, 2, 3};
-        const auto variant = Variant::fromArray(array);
-        CHECK_NOTHROW(services::writeValue(writer, id, variant));
-        CHECK(services::readValue(reader, id).template getArrayCopy<double>() == array);
+    std::vector<uint32_t> arrayDimensions{3};
+    CHECK_NOTHROW(services::writeArrayDimensions(writer, id, arrayDimensions));
+    CHECK(services::readArrayDimensions(reader, id) == arrayDimensions);
 
-        const auto dataValue = DataValue::fromArray(array);
-        CHECK_NOTHROW(services::writeDataValue(writer, id, dataValue));
-        DataValue dataValueRead = services::readDataValue(reader, id);
-        CHECK_EQ(dataValueRead->hasValue, true);
-        CHECK_EQ(dataValueRead->hasSourceTimestamp, true);
-        CHECK_EQ(dataValueRead->hasServerTimestamp, true);
-        CHECK(dataValueRead.getValue().getArrayCopy<double>() == array);
-    };
+    const std::vector<double> array{1, 2, 3};
+    const auto variant = Variant::fromArray(array);
+    CHECK_NOTHROW(services::writeValue(writer, id, variant));
+    CHECK(services::readValue(reader, id).template getArrayCopy<double>() == array);
 
-    // clang-format off
-    SUBCASE("Server/Server") { testWriteReadAttribute(server, server); }
-    SUBCASE("Server/Client") { testWriteReadAttribute(server, client); }
-    SUBCASE("Client/Server") { testWriteReadAttribute(client, server); }
-    SUBCASE("Client/Client") { testWriteReadAttribute(client, client); }
-    // clang-format on
+    const auto dataValue = DataValue::fromArray(array);
+    CHECK_NOTHROW(services::writeDataValue(writer, id, dataValue));
+    DataValue dataValueRead = services::readDataValue(reader, id);
+    CHECK_EQ(dataValueRead->hasValue, true);
+    CHECK_EQ(dataValueRead->hasSourceTimestamp, true);
+    CHECK_EQ(dataValueRead->hasServerTimestamp, true);
+    CHECK(dataValueRead.getValue().getArrayCopy<double>() == array);
 }
 
-TEST_CASE("View service set (server & client)") {
-    Server server;
-    ServerRunner serverRunner(server);
-    Client client;
-    client.connect("opc.tcp://localhost:4840");
+TEST_CASE_TEMPLATE("View service set", ServerOrClient, Server, Client) {
+    ServerClientSetup setup;
+    setup.client.connect(setup.endpointUrl);
+    auto& server = setup.server;
+    auto& client = setup.client;
+    auto& serverOrClient = setup.getInstance<ServerOrClient>();
 
     // add node to query references
     const NodeId id{1, 1000};
     services::addVariable(server, {0, UA_NS0ID_OBJECTSFOLDER}, id, "Variable");
 
-    const auto testBrowse = [&](auto& serverOrClient) {
-        SUBCASE("browse") {
-            const BrowseDescription bd(id, BrowseDirection::Both);
-            const auto result = services::browse(serverOrClient, bd);
+    SUBCASE("browse") {
+        const BrowseDescription bd(id, BrowseDirection::Both);
+        const auto result = services::browse(serverOrClient, bd);
 
-            CHECK(result.getStatusCode().isGood());
-            CHECK(result.getContinuationPoint().empty());
+        CHECK(result.getStatusCode().isGood());
+        CHECK(result.getContinuationPoint().empty());
 
-            const auto refs = result.getReferences();
-            CHECK(refs.size() == 2);
-            // 1. ComponentOf Objects
-            CHECK(refs[0].getReferenceTypeId() == NodeId(0, UA_NS0ID_HASCOMPONENT));
-            CHECK(refs[0].getIsForward() == false);
-            CHECK(refs[0].getNodeId() == ExpandedNodeId({0, UA_NS0ID_OBJECTSFOLDER}));
-            CHECK(refs[0].getBrowseName() == QualifiedName(0, "Objects"));
-            // 2. HasTypeDefinition BaseDataVariableType
-            CHECK(refs[1].getReferenceTypeId() == NodeId(0, UA_NS0ID_HASTYPEDEFINITION));
-            CHECK(refs[1].getIsForward() == true);
-            CHECK(refs[1].getNodeId() == ExpandedNodeId({0, UA_NS0ID_BASEDATAVARIABLETYPE}));
-            CHECK(refs[1].getBrowseName() == QualifiedName(0, "BaseDataVariableType"));
-        }
+        const auto refs = result.getReferences();
+        CHECK(refs.size() == 2);
+        // 1. ComponentOf Objects
+        CHECK(refs[0].getReferenceTypeId() == NodeId(0, UA_NS0ID_HASCOMPONENT));
+        CHECK(refs[0].getIsForward() == false);
+        CHECK(refs[0].getNodeId() == ExpandedNodeId({0, UA_NS0ID_OBJECTSFOLDER}));
+        CHECK(refs[0].getBrowseName() == QualifiedName(0, "Objects"));
+        // 2. HasTypeDefinition BaseDataVariableType
+        CHECK(refs[1].getReferenceTypeId() == NodeId(0, UA_NS0ID_HASTYPEDEFINITION));
+        CHECK(refs[1].getIsForward() == true);
+        CHECK(refs[1].getNodeId() == ExpandedNodeId({0, UA_NS0ID_BASEDATAVARIABLETYPE}));
+        CHECK(refs[1].getBrowseName() == QualifiedName(0, "BaseDataVariableType"));
+    }
 
-        SUBCASE("browseNext") {
-            // https://github.com/open62541/open62541/blob/v1.3.5/tests/client/check_client_highlevel.c#L252-L318
-            const BrowseDescription bd({0, UA_NS0ID_SERVER}, BrowseDirection::Both);
-            // restrict browse result to max 1 reference, more with browseNext
-            auto resultBrowse = services::browse(serverOrClient, bd, 1);
+    SUBCASE("browseNext") {
+        // https://github.com/open62541/open62541/blob/v1.3.5/tests/client/check_client_highlevel.c#L252-L318
+        const BrowseDescription bd({0, UA_NS0ID_SERVER}, BrowseDirection::Both);
+        // restrict browse result to max 1 reference, more with browseNext
+        auto resultBrowse = services::browse(serverOrClient, bd, 1);
 
-            CHECK(resultBrowse.getStatusCode().isGood());
-            CHECK(resultBrowse.getContinuationPoint().empty() == false);
-            CHECK(resultBrowse.getReferences().size() == 1);
+        CHECK(resultBrowse.getStatusCode().isGood());
+        CHECK(resultBrowse.getContinuationPoint().empty() == false);
+        CHECK(resultBrowse.getReferences().size() == 1);
 
-            // get next result
-            resultBrowse = services::browseNext(
-                serverOrClient, false, resultBrowse.getContinuationPoint()
-            );
-            CHECK(resultBrowse.getStatusCode().isGood());
-            CHECK(resultBrowse.getContinuationPoint().empty() == false);
-            CHECK(resultBrowse.getReferences().size() == 1);
-
-            // release continuation point, result should be empty
-            resultBrowse = services::browseNext(
-                serverOrClient, true, resultBrowse.getContinuationPoint()
-            );
-            CHECK(resultBrowse.getStatusCode().isGood());
-            CHECK(resultBrowse.getContinuationPoint().empty());
-            CHECK(resultBrowse.getReferences().size() == 0);
-        }
-
-        SUBCASE("browseAll") {
-            const BrowseDescription bd(id, BrowseDirection::Both);
-            CHECK(services::browseAll(serverOrClient, bd, 0).size() == 2);
-            CHECK(services::browseAll(serverOrClient, bd, 1).size() == 1);
-        }
-
-        SUBCASE("browseSimplifiedBrowsePath") {
-            const auto result = services::browseSimplifiedBrowsePath(
-                serverOrClient, {0, UA_NS0ID_ROOTFOLDER}, {{0, "Objects"}, {1, "Variable"}}
-            );
-            CHECK(result.getStatusCode().isGood());
-            const auto targets = result.getTargets();
-            CHECK(targets.size() == 1);
-            // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.8
-            // value shall be equal to the maximum value of uint32 if all elements processed
-            CHECK(targets[0].getRemainingPathIndex() == 0xffffffff);
-            CHECK(targets[0].getTargetId().getNodeId() == id);
-        }
-    };
-
-    // clang-format off
-    SUBCASE("Server") { testBrowse(server); };
-    SUBCASE("Client") { testBrowse(client); };
-    // clang-format on
-}
-
-TEST_CASE("View service set (server)") {
-    Server server;
-
-    SUBCASE("browseRecursive") {
-        const BrowseDescription bd(
-            ObjectId::Server,
-            BrowseDirection::Forward,
-            ReferenceTypeId::References,
-            true,
-            UA_NODECLASS_VARIABLE
+        // get next result
+        resultBrowse = services::browseNext(
+            serverOrClient, false, resultBrowse.getContinuationPoint()
         );
+        CHECK(resultBrowse.getStatusCode().isGood());
+        CHECK(resultBrowse.getContinuationPoint().empty() == false);
+        CHECK(resultBrowse.getReferences().size() == 1);
 
-        const auto results = services::browseRecursive(server, bd);
-        CHECK(!results.empty());
+        // release continuation point, result should be empty
+        resultBrowse = services::browseNext(
+            serverOrClient, true, resultBrowse.getContinuationPoint()
+        );
+        CHECK(resultBrowse.getStatusCode().isGood());
+        CHECK(resultBrowse.getContinuationPoint().empty());
+        CHECK(resultBrowse.getReferences().size() == 0);
+    }
 
-        auto contains = [&](const NodeId& id) {
-            return std::find(results.begin(), results.end(), ExpandedNodeId(id)) != results.end();
-        };
+    if constexpr (isServer<ServerOrClient>) {
+        SUBCASE("browseRecursive") {
+            const BrowseDescription bd(
+                ObjectId::Server,
+                BrowseDirection::Forward,
+                ReferenceTypeId::References,
+                true,
+                UA_NODECLASS_VARIABLE
+            );
 
-        CHECK(contains(VariableId::Server_ServerStatus));
-        CHECK(contains(VariableId::Server_ServerStatus_BuildInfo));
-        CHECK(contains(VariableId::Server_ServerStatus_BuildInfo_SoftwareVersion));
+            const auto results = services::browseRecursive(serverOrClient, bd);
+            CHECK(!results.empty());
+
+            auto contains = [&](const NodeId& element) {
+                return std::find(results.begin(), results.end(), ExpandedNodeId(element)) !=
+                       results.end();
+            };
+
+            CHECK(contains(VariableId::Server_ServerStatus));
+            CHECK(contains(VariableId::Server_ServerStatus_BuildInfo));
+            CHECK(contains(VariableId::Server_ServerStatus_BuildInfo_SoftwareVersion));
+        }
+    }
+
+    SUBCASE("browseAll") {
+        const BrowseDescription bd(id, BrowseDirection::Both);
+        CHECK(services::browseAll(serverOrClient, bd, 0).size() == 2);
+        CHECK(services::browseAll(serverOrClient, bd, 1).size() == 1);
+    }
+
+    SUBCASE("browseSimplifiedBrowsePath") {
+        const auto result = services::browseSimplifiedBrowsePath(
+            serverOrClient, {0, UA_NS0ID_ROOTFOLDER}, {{0, "Objects"}, {1, "Variable"}}
+        );
+        CHECK(result.getStatusCode().isGood());
+        const auto targets = result.getTargets();
+        CHECK(targets.size() == 1);
+        // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.8
+        // value shall be equal to the maximum value of uint32 if all elements processed
+        CHECK(targets[0].getRemainingPathIndex() == 0xffffffff);
+        CHECK(targets[0].getTargetId().getNodeId() == id);
+    }
+
+    SUBCASE("Register/unregister nodes") {
+        const auto response = services::registerNodes(
+            client, RegisterNodesRequest({}, {{1, 1000}})
+        );
+        CHECK(response.getRegisteredNodeIds().size() == 1);
+        CHECK(response.getRegisteredNodeIds()[0] == NodeId(1, 1000));
+
+        CHECK_NOTHROW(services::unregisterNodes(client, UnregisterNodesRequest({}, {{1, 1000}})));
     }
 }
 
 #ifdef UA_ENABLE_METHODCALLS
-TEST_CASE("Method service set (server & client)") {
-    Server server;
-    ServerRunner serverRunner(server);
-    Client client;
-    client.connect("opc.tcp://localhost:4840");
+TEST_CASE_TEMPLATE("Method service set", ServerOrClient, Server, Client) {
+    ServerClientSetup setup;
+    setup.client.connect(setup.endpointUrl);
+    auto& server = setup.server;
+    auto& serverOrClient = setup.getInstance<ServerOrClient>();
 
     const NodeId objectsId{ObjectId::ObjectsFolder};
     const NodeId methodId{1, 1000};
@@ -535,73 +548,66 @@ TEST_CASE("Method service set (server & client)") {
         }
     );
 
-    const auto testCall = [&](auto& serverOrClient) {
-        SUBCASE("Check result") {
-            const std::vector<Variant> outputs = services::call(
+    SUBCASE("Check result") {
+        const std::vector<Variant> outputs = services::call(
+            serverOrClient,
+            objectsId,
+            methodId,
+            {
+                Variant::fromScalar(int32_t{1}),
+                Variant::fromScalar(int32_t{2}),
+            }
+        );
+        CHECK(outputs.size() == 1);
+        CHECK(outputs.at(0).getScalarCopy<int32_t>() == 3);
+    }
+
+    SUBCASE("Propagate exception") {
+        throwException = true;
+        CHECK_THROWS_WITH(
+            services::call(
                 serverOrClient,
                 objectsId,
                 methodId,
                 {
-                    Variant::fromScalar<int32_t>(1),
-                    Variant::fromScalar<int32_t>(2),
+                    Variant::fromScalar(int32_t{1}),
+                    Variant::fromScalar(int32_t{2}),
                 }
-            );
-            CHECK(outputs.size() == 1);
-            CHECK(outputs.at(0).getScalarCopy<int32_t>() == 3);
-        }
+            ),
+            "BadUnexpectedError"
+        );
+    }
 
-        SUBCASE("Propagate exception") {
-            throwException = true;
-            CHECK_THROWS_WITH(
-                services::call(
-                    serverOrClient,
-                    objectsId,
-                    methodId,
-                    {
-                        Variant::fromScalar<int32_t>(1),
-                        Variant::fromScalar<int32_t>(2),
-                    }
-                ),
-                "BadUnexpectedError"
-            );
-        }
-
-        SUBCASE("Invalid input arguments") {
-            CHECK_THROWS_WITH(
-                services::call(
-                    serverOrClient,
-                    objectsId,
-                    methodId,
-                    {
-                        Variant::fromScalar<bool>(true),
-                        Variant::fromScalar<float>(11.11f),
-                    }
-                ),
-                "BadInvalidArgument"
-            );
-            CHECK_THROWS_WITH(
-                services::call(serverOrClient, objectsId, methodId, {}), "BadArgumentsMissing"
-            );
-            CHECK_THROWS_WITH(
-                services::call(
-                    serverOrClient,
-                    objectsId,
-                    methodId,
-                    {
-                        Variant::fromScalar<int32_t>(1),
-                        Variant::fromScalar<int32_t>(2),
-                        Variant::fromScalar<int32_t>(3),
-                    }
-                ),
-                "BadTooManyArguments"
-            );
-        }
-    };
-
-    // clang-format off
-    SUBCASE("Server") { testCall(server); };
-    SUBCASE("Client") { testCall(client); };
-    // clang-format on
+    SUBCASE("Invalid input arguments") {
+        CHECK_THROWS_WITH(
+            services::call(
+                serverOrClient,
+                objectsId,
+                methodId,
+                {
+                    Variant::fromScalar(true),
+                    Variant::fromScalar(11.11f),
+                }
+            ),
+            "BadInvalidArgument"
+        );
+        CHECK_THROWS_WITH(
+            services::call(serverOrClient, objectsId, methodId, {}), "BadArgumentsMissing"
+        );
+        CHECK_THROWS_WITH(
+            services::call(
+                serverOrClient,
+                objectsId,
+                methodId,
+                {
+                    Variant::fromScalar(int32_t{1}),
+                    Variant::fromScalar(int32_t{2}),
+                    Variant::fromScalar(int32_t{3}),
+                }
+            ),
+            "BadTooManyArguments"
+        );
+    }
 }
 #endif
 

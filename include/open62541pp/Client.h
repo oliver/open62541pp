@@ -43,8 +43,10 @@ public:
      * Create client with default configuration (no encryption).
      * Security policies:
      * - [None](http://opcfoundation.org/UA/SecurityPolicy#None)
+     * @param logger Custom log function. If the passed function is empty, the default logger is
+     * used.
      */
-    Client();
+    explicit Client(Logger logger = nullptr);
 
 #ifdef UA_ENABLE_ENCRYPTION
     /**
@@ -86,6 +88,7 @@ public:
     std::vector<EndpointDescription> getEndpoints(std::string_view serverUrl);
 
     /// Set custom logging function.
+    /// Does nothing if the passed function is empty or a nullptr.
     void setLogger(Logger logger);
 
     /// Set response timeout in milliseconds.
@@ -152,7 +155,7 @@ public:
     /// Check if the client's main loop is running.
     bool isRunning() const noexcept;
 
-    Node<Client> getNode(const NodeId& id);
+    Node<Client> getNode(NodeId id);
     Node<Client> getRootNode();
     Node<Client> getObjectsNode();
     Node<Client> getTypesNode();

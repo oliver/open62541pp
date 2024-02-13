@@ -1,10 +1,13 @@
 name: CI
 
-on: [push, pull_request]
+on:
+  push:
+    branches: [master]
+  pull_request:
 
 jobs:
   linux:
-    # https://github.com/actions/runner-images/blob/main/images/linux/Ubuntu2204-Readme.md
+    # https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2204-Readme.md
     name: Linux ${{ matrix.config.name }} (${{ matrix.build_type }})
     runs-on: ubuntu-22.04
     strategy:
@@ -26,7 +29,7 @@ jobs:
           - { name: TSan,       CC: clang-14, CXX: clang++-14, flags: "-DUAPP_ENABLE_SANITIZER_THREAD=ON" }
           - { name: UBSan,      CC: clang-14, CXX: clang++-14, flags: "-DUAPP_ENABLE_SANITIZER_UNDEFINED_BEHAVIOR=ON" }
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: recursive
       - uses: aminya/setup-cpp@v1
@@ -51,7 +54,7 @@ jobs:
     name: Linux Coverage
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: recursive
       - uses: aminya/setup-cpp@v1
@@ -63,8 +66,9 @@ jobs:
           mkdir build
           cd build
           cmake -G Ninja \
-            -DUAPP_BUILD_TESTS=ON \
+            -DCMAKE_BUILD_TYPE=Debug \
             -DUA_ENABLE_ENCRYPTION=OPENSSL \
+            -DUAPP_BUILD_TESTS=ON \
             -DUAPP_ENABLE_COVERAGE=ON \
             ..
           cmake --build .
@@ -75,14 +79,14 @@ jobs:
       - name: Coverage report (xml)
         run: cmake --build build --target open62541pp_coverage_report_xml
       - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v4
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: build/coverage.xml
 
   windows:
-    # https://github.com/actions/runner-images/blob/main/images/win/Windows2019-Readme.md
-    # https://github.com/actions/runner-images/blob/main/images/win/Windows2022-Readme.md
+    # https://github.com/actions/runner-images/blob/main/images/windows/Windows2019-Readme.md
+    # https://github.com/actions/runner-images/blob/main/images/windows/Windows2022-Readme.md
     name: Windows ${{ matrix.config.name }} (${{ matrix.build_type }}, ${{ matrix.library_type }})
     runs-on: ${{ matrix.config.os }}
     strategy:
@@ -94,7 +98,7 @@ jobs:
           - { name: Visual Studio 16 2019, os: windows-2019 }
           - { name: Visual Studio 17 2022, os: windows-2022 }
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: recursive
       - name: Build
@@ -121,7 +125,7 @@ jobs:
         config:
           - { name: AppleClang 14, CC: clang, CXX: clang++ }
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: recursive
       - name: Build
